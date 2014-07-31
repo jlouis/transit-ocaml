@@ -52,13 +52,9 @@ type t =
     | `Bool of Bool.t
     | `Int of Int64.t
     | `Float of Float.t
-    | `Bytes of string
     | `Array of t list
     | `Map of (t * t) list
-    (* Extension types *)
-    | `Keyword of string
-    | `Symbol of string
-    | `BigInt of Big_int.big_int ]
+]
 
 let untag c t s =
   let r = match t with
@@ -70,12 +66,6 @@ let untag c t s =
               | _ -> raise (Parse_error "untag ? case"))
     | 'i' -> `Int (Int64.of_string s)
     | 'd' -> `Float (Float.of_string s)
-    | 'b' -> `Bytes (Base64.decode_string s)
-
-    (* Extension types *)
-    | ':' -> `Keyword s
-    | '$' -> `Symbol s
-    | 'n' -> `BigInt (Big_int.big_int_of_string s)
     | _ -> raise (Parse_error "untag")
   in
     (r, c)
@@ -97,12 +87,46 @@ type tag_view =
  | No
 
 let view_tag = function
+  | [] -> No
+  | ((`String h) :: t) ->
+  	(match h.[0], h.[1] with
+  	| ('~', '#') -> Yes h.[2]
+  	| _ -> No)
   | _ -> No
+
+let rec quote (x : Yojson.Basic.json) : t =
+  match x with
+  | `Null -> `Null
+  | `String s -> `String s
+  | `Bool b -> `Bool b
+  | `Int i -> `Int (Int64.of_int i)
+  | `Float f -> `Float f
+  | `List arr -> `Array (List.map ~f:quote arr)
+  | `Assoc assocs ->
+  	`Map (List.map assocs ~f:(fun (s, json) -> (`String s, quote json)))
+
+let rec to_string x =
+  match x with
+  | `Null -> "null"
+  | `String s -> String.concat ["\""; s; "\""]
+  | `Bool true -> "true"
+  | `Bool false -> "false"
+  | `Int i -> Int64.to_string i
+  | `Float f -> Float.to_string f
+  | `Array arr ->
+    let contents = List.map arr ~f:to_string in
+        String.concat (List.concat [["["]; contents; ["]"]])
+  | `Map m ->
+    "?MAP"
+
 
 let from_string str =
   let empty_cache = Cache.empty in
   let rec decode_array c arr =
       match view_tag arr with
+        | Yes '\'' ->
+            let [rest] = List.tl_exn arr in
+              (quote rest, c)
         | Yes _ -> raise NotImplemented
         | No ->
                  let f (es, c) e = let (r, c') = conv c e in (r :: es, c') in

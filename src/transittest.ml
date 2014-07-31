@@ -8,11 +8,26 @@ let read_json t =
       
 let exemplar t expect =
     let real = read_json t in
-      assert_equal expect real
+      assert_equal ~printer:Transit.to_string
+      	expect real
 
 let tests = "Transit" >::: [
     "dummy" >::
       (fun () -> assert_equal true true);
     "nil" >::
-      (fun () -> exemplar "nil" (`Null));
+      (fun () -> exemplar "nil" `Null);
+    "true" >::
+      (fun () -> exemplar "true" (`Bool true));
+    "false" >::
+      (fun () -> exemplar "false" (`Bool false));
+    "zero" >::
+      (fun () -> exemplar "zero" (`Int (Int64.of_int 0)));
+    "one" >::
+      (fun () -> exemplar "one" (`Int (Int64.of_int 1)));
+    "one_string" >::
+      (fun () -> exemplar "one_string" (`String "hello"));
+    "one_keyword" >::
+      (fun () -> exemplar "one_keyword" (`Keyword "hello"));
+    "one_symbol" >::
+      (fun () -> exemplar "one_symbol" (`Symbol "hello"));
   ]
