@@ -1,2 +1,2 @@
 compile:
-	$(MAKE) -C .. compile
+	$(MAKE) -C ..

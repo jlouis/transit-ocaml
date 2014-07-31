@@ -2,7 +2,7 @@
 open Core.Std
 
 (* TODO LIST of what needs implementation:
- * - Test framework in general for the implementation
+ * - Figure out how to verify the system by looking at how bin/verify works :)
  * - Caching logic in the string read path
  * - Tagged values in the array read path
  * - Tagged values in the map read path
@@ -14,6 +14,7 @@ open Core.Std
   * transit operation. We use a Map, even though an Array would be faster on one side of things and is suggested by
   * the transit people. However, a map is symmetric and nicer for a functional language
   *)
+  
 module type Cache = sig
     type t
     
@@ -36,7 +37,7 @@ module String_cache = struct
             { m = m'; c = c + 1 }
             
     let find {m ; _ } x = Int.Map.find m x
-    
+
 end
 
 module Cache : Cache = String_cache
