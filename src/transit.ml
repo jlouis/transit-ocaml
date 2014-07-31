@@ -2,6 +2,7 @@
 open Core.Std
 
 (* TODO LIST of what needs implementation:
+ * - Test framework in general for the implementation
  * - Caching logic in the string read path
  * - Tagged values in the array read path
  * - Tagged values in the map read path
@@ -42,6 +43,7 @@ module Cache : Cache = String_cache
     
 exception NotImplemented
 exception Parse_error of string
+exception Cache_lookup
 
 type t =
   [ | `Null
@@ -79,6 +81,12 @@ let untag c t s =
 
 let decode_string c s =
   match (s.[0], s.[1]) with
+  | ('^', _) ->
+      let i = Int.of_string (String.drop_prefix s 1)
+      in
+        (match Cache.find c i with
+        | Some v -> (`String v, c)
+        | None -> raise Cache_lookup)
   | ('~', '~') -> (`String (String.drop_prefix s 1), c)
   | ('~', tag) -> untag c tag (String.drop_prefix s 2)
   | _ -> (`String s, c)
