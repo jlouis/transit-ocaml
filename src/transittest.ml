@@ -26,6 +26,10 @@ let array_mixed = `Array [
 let array_nested = `Array [array_simple; array_mixed]
 
 let small_strings = `Array [s ""; s "a"; s "ab"; s "abc"; s "abcd"; s "abcde"; s "abcdef"]
+let add_string prefix (`Array arr) = `Array (List.map arr ~f:(fun (`String s) -> `String (String.concat [prefix; s])))
+
+let ints_centered_on ?range:(m=5) n =
+    List.map (List.range (n - m) (m + n + 1)) ~f:(fun i -> `Int (Int64.of_int i))
 
 let t n expect = n >:: (fun(_) -> exemplar n expect)
 
@@ -46,4 +50,9 @@ let tests = "Transit" >::: [
     t "vector_mixed" array_mixed;
     t "vector_nested" array_nested;
     t "small_strings" small_strings;
+    t "strings_tilde" (add_string "~" small_strings);
+    t "strings_hash" (add_string "#" small_strings);
+    t "strings_hat" (add_string "^" small_strings);
+    t "ints" (`Array (List.map (List.range 0 128) ~f:(fun (i) -> `Int (Int64.of_int i))) );
+    t "small_ints" (`Array (ints_centered_on 0));
   ]

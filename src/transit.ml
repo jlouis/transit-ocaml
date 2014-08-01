@@ -79,16 +79,19 @@ let untag c t s =
     (r, c)
 
 let decode_string c s =
-  match (s.[0], s.[1]) with
-  | ('^', _) ->
-      let i = Int.of_string (String.drop_prefix s 1)
-      in
-        (match Cache.find c i with
-        | Some v -> (`String v, c)
-        | None -> raise Cache_lookup)
-  | ('~', '~') -> (`String (String.drop_prefix s 1), c)
-  | ('~', tag) -> untag c tag (String.drop_prefix s 2)
-  | _ -> (`String s, c)
+  match String.length s with
+  | 0 | 1 -> (`String s, c)
+  | _ -> (match (s.[0], s.[1]) with
+  	| ('^', _) ->
+      	  let i = Int.of_string (String.drop_prefix s 1)
+      	  in
+          (match Cache.find c i with
+          | Some v -> (`String v, c)
+          | None -> raise Cache_lookup)
+  	| ('~', '~') -> (`String (String.drop_prefix s 1), c)
+  	| ('~', '^') -> (`String (String.drop_prefix s 1), c)
+  	| ('~', tag) -> untag c tag (String.drop_prefix s 2)
+  	| _ -> (`String s, c))
 
 type tag_view =
    Yes of char
@@ -97,9 +100,14 @@ type tag_view =
 let view_tag = function
   | [] -> No
   | ((`String h) :: t) ->
+      (match String.length h with
+      | 0 -> No;
+      | 1 -> No;
+      | 2 -> No;
+      | _ ->
   	(match h.[0], h.[1] with
   	| ('~', '#') -> Yes h.[2]
-  	| _ -> No)
+  	| _ -> No))
   | _ -> No
 
 let rec to_string x =
@@ -115,7 +123,8 @@ let rec to_string x =
   | `Date ts -> Time.to_string ts
   | `Array arr ->
     let contents = List.map arr ~f:to_string in
-        String.concat (List.concat [["["]; contents; ["]"]])
+    let contents' = String.concat ~sep:", " contents in
+        String.concat (["["; contents'; "]"])
   | `Map m ->
     "?MAP"
 
