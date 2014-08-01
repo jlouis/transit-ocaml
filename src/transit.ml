@@ -41,7 +41,7 @@ module String_cache = struct
 end
 
 module Cache : Cache = String_cache
-    
+
 exception NotImplemented
 exception Parse_error of string
 exception Cache_lookup
@@ -54,6 +54,9 @@ type t =
     | `Float of Float.t
     | `Array of t list
     | `Map of (t * t) list
+    | `Keyword of string
+    | `Symbol of string
+    | `Date of Time.t
 ]
 
 let untag c t s =
@@ -66,6 +69,11 @@ let untag c t s =
               | _ -> raise (Parse_error "untag ? case"))
     | 'i' -> `Int (Int64.of_string s)
     | 'd' -> `Float (Float.of_string s)
+    | ':' -> `Keyword s
+    | '$' -> `Symbol s
+    | 'm' ->
+        let f = Big_int.float_of_big_int (Big_int.big_int_of_string s) in
+          `Date (Time.of_float (f /. 1000.0))
     | _ -> raise (Parse_error "untag")
   in
     (r, c)
@@ -94,17 +102,6 @@ let view_tag = function
   	| _ -> No)
   | _ -> No
 
-let rec quote (x : Yojson.Basic.json) : t =
-  match x with
-  | `Null -> `Null
-  | `String s -> `String s
-  | `Bool b -> `Bool b
-  | `Int i -> `Int (Int64.of_int i)
-  | `Float f -> `Float f
-  | `List arr -> `Array (List.map ~f:quote arr)
-  | `Assoc assocs ->
-  	`Map (List.map assocs ~f:(fun (s, json) -> (`String s, quote json)))
-
 let rec to_string x =
   match x with
   | `Null -> "null"
@@ -113,6 +110,9 @@ let rec to_string x =
   | `Bool false -> "false"
   | `Int i -> Int64.to_string i
   | `Float f -> Float.to_string f
+  | `Keyword s -> String.concat [":"; s]
+  | `Symbol s -> String.concat ["$"; s]
+  | `Date ts -> Time.to_string ts
   | `Array arr ->
     let contents = List.map arr ~f:to_string in
         String.concat (List.concat [["["]; contents; ["]"]])
@@ -126,7 +126,7 @@ let from_string str =
       match view_tag arr with
         | Yes '\'' ->
             let [rest] = List.tl_exn arr in
-              (quote rest, c)
+              conv c rest
         | Yes _ -> raise NotImplemented
         | No ->
                  let f (es, c) e = let (r, c') = conv c e in (r :: es, c') in
@@ -154,4 +154,4 @@ let from_string str =
   in
     r
 
-                  
+

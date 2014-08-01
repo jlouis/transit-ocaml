@@ -1,5 +1,5 @@
-open OUnit
+open OUnit2
 open Core.Std
 
 let () =
-    ignore (OUnit.run_test_tt ~verbose:true Transittest.tests)
+    ignore (OUnit2.run_test_tt_main Transittest.tests)
