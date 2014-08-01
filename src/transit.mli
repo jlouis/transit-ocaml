@@ -13,6 +13,9 @@ type t =
     | `Keyword of string
     | `Symbol of string
     | `Date of Time.t
+    | `UUID of Uuid.t
+    | `URI of string
+    | `BigInt of Big_int.big_int
  ]
 
 val from_string : string -> t

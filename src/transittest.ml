@@ -19,6 +19,7 @@ let array_simple = `Array [`Int (Int64.of_int 1);
 
 let i x = `Int (Int64.of_int x)
 let s x = `String x
+let fl (x : float) = `Float x
 
 let array_mixed = `Array [
 	i 0; i 1; `Float 2.0; `Bool true; `Bool false; `String "five"; `Keyword "six"; `Symbol "seven"; `String "~eight"; `Null]
@@ -28,8 +29,48 @@ let array_nested = `Array [array_simple; array_mixed]
 let small_strings = `Array [s ""; s "a"; s "ab"; s "abc"; s "abcd"; s "abcde"; s "abcdef"]
 let add_string prefix (`Array arr) = `Array (List.map arr ~f:(fun (`String s) -> `String (String.concat [prefix; s])))
 
+let uris =
+  [`URI "http://example.com";
+   `URI "ftp://example.com";
+   `URI "file:///path/to/file.txt";
+   `URI "http://www.詹姆斯.com/";
+  ]
+
+let uuids =
+	[`UUID (Uuid.of_string "5a2cbea3-e8c6-428b-b525-21239370dd55");
+	 `UUID (Uuid.of_string "d1dc64fa-da79-444b-9fa4-d4412f427289");
+	 `UUID (Uuid.of_string "501a978e-3a3e-4060-b3be-1cf2bd4b1a38");
+	 `UUID (Uuid.of_string "b3ba141a-a776-48e4-9fae-a28ea8571f58");
+	]
+
 let ints_centered_on ?range:(m=5) n =
     List.map (List.range (n - m) (m + n + 1)) ~f:(fun i -> `Int (Int64.of_int i))
+    
+let pow n x =
+  let rec worker : (int -> int) = function
+    | 0 -> 1
+    | k -> k * (worker (k-1))
+  in
+    worker x
+
+let powers_of_two =
+  List.map (List.range 0 66) ~f:(fun x -> pow 2 x)
+
+let interesting_ints =
+    List.map powers_of_two ~f:ints_centered_on
+    |> List.concat
+
+let doublify ints =
+    let floats = List.map ints ~f:(fun (`Int x) -> `Float (Int64.to_float x )) in
+      `Array floats
+
+let dates =
+    let points = [-6106017600000.0; 0.0; 946728000000.0; 1396909037000.0] in
+      List.map points ~f:(fun p -> `Date (from_timestamp (p /. 1000.0)))
+
+let sym_strs = ["a"; "ab"; "abc"; "abcd"; "abcde"; "a1"; "b2"; "c3"; "a_b"]
+let symbols = List.map sym_strs ~f:(fun x -> `Symbol x)
+let keywords = List.map sym_strs ~f:(fun x -> `Keyword x)
 
 let t n expect = n >:: (fun(_) -> exemplar n expect)
 
@@ -55,4 +96,15 @@ let tests = "Transit" >::: [
     t "strings_hat" (add_string "^" small_strings);
     t "ints" (`Array (List.map (List.range 0 128) ~f:(fun (i) -> `Int (Int64.of_int i))) );
     t "small_ints" (`Array (ints_centered_on 0));
-  ]
+    t "ints_interesting" (`Array interesting_ints);
+    t "ints_interesting_neg" (`Array interesting_ints);
+    t "doubles_small" (ints_centered_on 0 |> doublify);
+    t "doubles_interesting" (`Array [fl (-3.14159); fl 3.14159; fl 4E11; fl 2.998E8; fl 6.626E-34]);
+    t "one_uuid" (List.hd_exn uuids);
+    t "uuids" (`Array uuids);
+    t "one_uri" (List.hd_exn uris);
+    t "uris" (`Array uris);
+    t "dates_interesting" (`Array dates);
+    t "symbols" (`Array symbols);
+    t "keywords" (`Array keywords);
+]

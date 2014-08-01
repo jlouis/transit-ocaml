@@ -57,6 +57,9 @@ type t =
     | `Keyword of string
     | `Symbol of string
     | `Date of Time.t
+    | `UUID of Uuid.t
+    | `URI of string
+    | `BigInt of Big_int.big_int
 ]
 
 let untag c t s =
@@ -71,6 +74,9 @@ let untag c t s =
     | 'd' -> `Float (Float.of_string s)
     | ':' -> `Keyword s
     | '$' -> `Symbol s
+    | 'u' -> `UUID (Uuid.of_string s)
+    | 'r' -> `URI s
+    | 'n' -> `BigInt (Big_int.big_int_of_string s)
     | 'm' ->
         let f = Big_int.float_of_big_int (Big_int.big_int_of_string s) in
           `Date (Time.of_float (f /. 1000.0))
@@ -127,6 +133,9 @@ let rec to_string x =
         String.concat (["["; contents'; "]"])
   | `Map m ->
     "?MAP"
+  | `URI s -> String.concat ["uri("; s; ")"]
+  | `UUID uuid -> String.concat ["uuid("; Uuid.to_string uuid; ")"]
+  | `BigInt i -> Big_int.string_of_big_int i
 
 
 let from_string str =
