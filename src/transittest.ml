@@ -27,6 +27,21 @@ let mixed = [ i 0; i 1; `Float 2.0; `Bool true; `Bool false; `String "five";
 
 let array_nested = `Array [`Array simple; `Array mixed]
 let list_nested = `List [`List simple; `List mixed]
+let set_nested = `Set [`Set simple; `Set mixed]
+
+let map_simple = `Map
+	[`Keyword "a", `Int (Int64.of_int 1);
+	 `Keyword "b", `Int (Int64.of_int 2);
+	 `Keyword "c", `Int (Int64.of_int 3)]
+	 
+let map_mixed = `Map
+	[`Keyword "a", `Int (Int64.of_int 1);
+	 `Keyword "b", `String "a string";
+	 `Keyword "c", `Bool true]
+
+let map_nested = `Map
+ 	[`Keyword "simple", map_simple;
+ 	 `Keyword "mixed", map_mixed]
 
 let small_strings = `Array [s ""; s "a"; s "ab"; s "abc"; s "abcd"; s "abcde"; s "abcdef"]
 let add_string prefix (`Array arr) = `Array (List.map arr ~f:(fun (`String s) -> `String (String.concat [prefix; s])))
@@ -113,4 +128,11 @@ let tests = "Transit" >::: [
     t "list_empty" (`List []);
     t "list_mixed" (`List mixed);
     t "list_nested" list_nested;
+    t "set_simple" (`Set simple);
+    t "set_empty" (`Set []);
+    t "set_mixed" (`Set mixed);
+    t "set_nested" set_nested;
+    t "map_simple" map_simple;
+    t "map_mixed" map_mixed;
+    t "map_nested" map_nested;
 ]

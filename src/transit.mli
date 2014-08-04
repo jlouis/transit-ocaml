@@ -1,8 +1,7 @@
 open Core.Std
 
 type t =
-  [ (* Ground values, scalars and composites *)
-    | `Null
+  [ | `Null
     | `String of string
     | `Bool of Bool.t
     | `Int of Int64.t
@@ -15,6 +14,7 @@ type t =
     | `UUID of Uuid.t
     | `URI of string
     | `List of t list
+    | `Set of t list
  ]
 
 val from_string : string -> t

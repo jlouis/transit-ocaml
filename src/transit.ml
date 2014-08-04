@@ -34,6 +34,7 @@ module Parser = struct
         | `Date of Time.t
         | `URI of string
         | `List of t list
+        | `Set of t list
       ]
       
     let decode_tagged s = function
@@ -52,6 +53,7 @@ module Parser = struct
 
     let decode_array es = function
       | "~#list" -> Some (`List (unarray es))
+      | "~#set" -> Some (`Set (unarray es))
       | _ -> None
 
     let to_string = function
@@ -61,6 +63,7 @@ module Parser = struct
       | `Symbol s -> String.concat ["$"; s]
       | `Date ts -> Time.to_string ts
       | `List lst -> "?List"
+      | `Set set -> "?Set"
       | _ -> raise Internal_error
   end
 
@@ -130,6 +133,7 @@ module Parser = struct
       | ('~', '^') -> `String (String.drop_prefix s 1)
       | ('~', '#') -> `String s (* Array tag *)
       | ('~', t) -> decode_tagged (String.drop_prefix s 2) t
+      | ('^', ' ') -> `String s (* Map as array *)
       | ('^', _) ->
         let i = Int.of_string (String.drop_prefix s 1)in
           Cache.find_exn cache i
@@ -154,6 +158,14 @@ module Parser = struct
       else
         (cache, push (decode_string cache str) ctx)
 
+  let rec map_as_array es =
+    let rec loop = function
+      | [] -> []
+      | (k :: v :: rest) -> (k, v) :: (loop rest)
+      | _ -> raise (Parse_error "Map-as-array has an odd number of arguments")
+    in
+      `Map (loop es)
+
   (* Parser rules *)
   exception Todo
   let on_null (cache, ctx) = (cache, push `Null ctx)
@@ -170,6 +182,7 @@ module Parser = struct
   let on_end_array (cache, ctx) =
     let handle_array parent = function
       | [] -> (cache, push (`Array []) parent)
+      | (`String "^ ") :: elems -> (cache, push (map_as_array elems) parent)
       | [`String "~#'"; quoted] -> (cache, push quoted parent)
       | [`String tag; value] as elems ->
           (match Extension.decode_array value tag with
@@ -216,7 +229,10 @@ let rec to_string x =
   | `Array arr ->
     let contents = List.map arr ~f:to_string in
     let contents' = String.concat ~sep:" | " contents in
-        String.concat (["["; contents'; "]"])
+        String.concat ["["; contents'; "]"]
   | `Map m ->
-    "?MAP"
+    let contents =
+        List.map m ~f:(fun (k, v) -> String.concat ["("; to_string k; ", "; to_string v; ")"]) in
+    let contents' = String.concat ~sep:", " contents in
+    	String.concat ["{"; contents'; "}"]
   | ext -> Parser.Extension.to_string ext
