@@ -85,13 +85,13 @@ let tests = "Transit" >::: [
     t "zero" (`Int (Int64.of_int 0));
     t "one" (`Int (Int64.of_int 1));
     t "one_string" (`String "hello");
-(*    t "one_keyword" (`Keyword "hello"); *)
-(*    t "one_symbol" (`Symbol "hello"); *)
-(*    t "one_date" (`Date (from_timestamp 946728000.0)); *)
+    t "one_keyword" (`Keyword "hello");
+    t "one_symbol" (`Symbol "hello");
+    t "one_date" (`Date (from_timestamp 946728000.0)); 
     t "vector_simple" (`Array simple);
     t "vector_empty" (`Array []);
-(*    t "vector_mixed" (`Array mixed); *)
-(*    t "vector_nested" array_nested; *)
+    t "vector_mixed" (`Array mixed);
+    t "vector_nested" array_nested;
     t "small_strings" small_strings;
     t "strings_tilde" (add_string "~" small_strings);
     t "strings_hash" (add_string "#" small_strings);
@@ -102,15 +102,15 @@ let tests = "Transit" >::: [
     (* t "ints_interesting_neg" (`Array interesting_ints); *)
     t "doubles_small" (ints_centered_on 0 |> doublify);
     t "doubles_interesting" (`Array [fl (-3.14159); fl 3.14159; fl 4E11; fl 2.998E8; fl 6.626E-34]);
-(*    t "one_uuid" (List.hd_exn uuids);
+    t "one_uuid" (List.hd_exn uuids);
     t "uuids" (`Array uuids);
     t "one_uri" (List.hd_exn uris);
     t "uris" (`Array uris);
     t "dates_interesting" (`Array dates);
     t "symbols" (`Array symbols);
     t "keywords" (`Array keywords);
-    t "list_simple" (`List simple);
+(*    t "list_simple" (`List simple);
     t "list_empty" (`List []);
     t "list_mixed" (`List mixed);
-    t "list_nested" list_nested; *)
+    t "list_nested" list_nested;  *)
 ]

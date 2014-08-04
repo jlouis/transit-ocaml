@@ -11,7 +11,7 @@ module type Cache = sig
     
     val empty : t
     val track : t -> string -> t
-    val find : t -> int -> string option
+    val find_exn : t -> int -> string
 end
 
 module String_cache = struct
@@ -27,7 +27,7 @@ module String_cache = struct
         let m' = Int.Map.add m ~key:c ~data:s in
             { m = m'; c = c + 1 }
             
-    let find {m ; _ } x = Int.Map.find m x
+    let find_exn {m ; _ } x = Int.Map.find_exn m x
 
 end
 
@@ -35,17 +35,53 @@ module Cache : Cache = String_cache
 
 module Parser = struct
 
+  (* Used for internal errors in the parser that should never happen *)
   exception Internal_error
+  
+  (* Used for errors in the parse input which we don't understand *)
+  exception Parse_error of string
 
-  type t =
+  type 'a ground =
     [ | `Null
       | `String of string
       | `Bool of Bool.t
       | `Int of Int64.t
       | `Float of Float.t
-      | `Array of t list
-      | `Map of (t * t) list ]
+      | `Array of 'a list
+      | `Map of ('a * 'a) list ]
   
+  module Extension = struct
+  
+    type t =
+      [ | t ground
+        | `UUID of Uuid.t
+        | `Keyword of string
+        | `Symbol of string
+        | `Date of Time.t
+        | `URI of string
+      ]
+      
+    let decode_tagged s = function
+      | 'u' -> Some (`UUID (Uuid.of_string s))
+      | 'r' -> Some (`URI s)
+      | ':' -> Some (`Keyword s)
+      | '$' -> Some (`Symbol s)
+      | 'm' ->
+        let f = Big_int.float_of_big_int (Big_int.big_int_of_string s) in
+          Some (`Date (Time.of_float (f /. 1000.0)))
+      | _ -> None
+
+    let to_string = function
+      | `UUID uuid -> String.concat ["uuid("; Uuid.to_string uuid; ")"]
+      | `URI uri -> String.concat ["uri("; uri; ")"]
+      | `Keyword s -> String.concat [":"; s]
+      | `Symbol s -> String.concat ["$"; s]
+      | `Date ts -> Time.to_string ts
+      | _ -> raise Internal_error
+  end
+
+  type t = Extension.t
+
   (* Type of parser contexts *)
   type context =
     | Focus of t list
@@ -60,6 +96,32 @@ module Parser = struct
     | Focus es -> Focus (e :: es)
     | Array (es, ctx) -> Array (e :: es, ctx)
 
+  let decode_tagged s = function
+    | '_' -> `Null
+    | 's' -> `String s
+    | '?' ->
+      (match s with
+       | "t" -> `Bool true
+       | "f" -> `Bool false
+       | _ -> raise (Parse_error "decode_tagged ? case"))
+    | 'i' -> `Int (Int64.of_string s)
+    | 'd' -> `Float (Float.of_string s)
+    | t -> (match Extension.decode_tagged s t with
+            | None -> `String s
+            | Some value -> value)
+
+  let decode_string s =
+    let analyze_string = function
+      | ('~', '~') -> `String (String.drop_prefix s 1)
+      | ('~', '^') -> `String (String.drop_prefix s 1)
+      | ('~', '#') -> `String s (* Array tag *)
+      | ('~', t) -> decode_tagged (String.drop_prefix s 2) t
+      | _ -> `String s
+    in
+      match String.length s with
+      | 0 | 1 -> `String s
+      | _ -> analyze_string (s.[0], s.[1])
+    
   (* Parser rules *)
   exception Todo
   let on_null (cache, ctx) = (cache, push `Null ctx)
@@ -68,7 +130,7 @@ module Parser = struct
   let on_float (cache, ctx) f = (cache, push (`Float f) ctx)
   let on_string (cache, ctx) buf offset len =
     let str = String.sub buf offset len in
-      (cache, push (`String str) ctx)
+      (cache, push (decode_string str) ctx)
   let on_start_map _ = raise Todo
   let on_map_key _ buf offset len = raise Todo
   let on_end_map _ = raise Todo
@@ -105,7 +167,7 @@ module Parser = struct
       
 end
 
-type t = Parser.t
+type t = Parser.Extension.t
 let from_string = Parser.from_string
 
 let rec to_string x =
@@ -122,6 +184,7 @@ let rec to_string x =
         String.concat (["["; contents'; "]"])
   | `Map m ->
     "?MAP"
+  | ext -> Parser.Extension.to_string ext
 
 
 (*
