@@ -14,6 +14,7 @@ type t =
     | `Date of Time.t
     | `UUID of Uuid.t
     | `URI of string
+    | `List of t list
  ]
 
 val from_string : string -> t

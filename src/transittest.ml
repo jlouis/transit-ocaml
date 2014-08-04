@@ -109,8 +109,8 @@ let tests = "Transit" >::: [
     t "dates_interesting" (`Array dates);
     t "symbols" (`Array symbols);
     t "keywords" (`Array keywords);
-(*    t "list_simple" (`List simple);
+    t "list_simple" (`List simple);
     t "list_empty" (`List []);
     t "list_mixed" (`List mixed);
-    t "list_nested" list_nested;  *)
+    t "list_nested" list_nested;
 ]
