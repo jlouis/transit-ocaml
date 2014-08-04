@@ -6,10 +6,10 @@ test: compile.byte
 compile: compile.byte
 
 compile.byte:
-	corebuild -pkg yojson,oUnit -libs nums src/main.byte
+	corebuild -pkg yajl,oUnit -libs nums src/main.byte
 
 compile:
-	corebuild -pkg yojson,oUnit -libs nums src/main.native
+	corebuild -pkg yajl,oUnit -libs nums src/main.native
 
 .PHONY: clean
 clean:

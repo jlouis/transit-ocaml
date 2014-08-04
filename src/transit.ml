@@ -1,15 +1,6 @@
 (* Transit *)
 open Core.Std
 
-(* TODO LIST of what needs implementation:
- * - Figure out how to verify the system by looking at how bin/verify works :)
- * - Caching logic in the string read path
- * - Tagged values in the array read path
- * - Tagged values in the map read path
- * - Layered decoders for specialization
- * - All of the write path
- *)
-
 (* This is a very simple cache implementation which runs on an 'string Int.Map.t'. This is a requirement for correct
   * transit operation. We use a Map, even though an Array would be faster on one side of things and is suggested by
   * the transit people. However, a map is symmetric and nicer for a functional language
@@ -42,7 +33,100 @@ end
 
 module Cache : Cache = String_cache
 
+module Parser = struct
+
+  exception Internal_error
+
+  type t =
+    [ | `Null
+      | `String of string
+      | `Bool of Bool.t
+      | `Int of Int64.t
+      | `Float of Float.t
+      | `Array of t list
+      | `Map of (t * t) list ]
+  
+  (* Type of parser contexts *)
+  type context =
+    | Focus of t list
+    | Array of t list * context
+    | Map of ((t * t) list) * context
+
+  let ctx_to_string x =
+    match x with
+    | Focus lst -> String.concat ~sep:" " ["Focus"; Int.to_string (List.length lst)]
+
+  let push e = function
+    | Focus es -> Focus (e :: es)
+    | Array (es, ctx) -> Array (e :: es, ctx)
+
+  (* Parser rules *)
+  exception Todo
+  let on_null (cache, ctx) = (cache, push `Null ctx)
+  let on_bool (cache, ctx) b = (cache, push (`Bool b) ctx)
+  let on_int (cache, ctx) i = (cache, push (`Int i) ctx)
+  let on_float (cache, ctx) f = (cache, push (`Float f) ctx)
+  let on_string (cache, ctx) buf offset len =
+    let str = String.sub buf offset len in
+      (cache, push (`String str) ctx)
+  let on_start_map _ = raise Todo
+  let on_map_key _ buf offset len = raise Todo
+  let on_end_map _ = raise Todo
+  let on_start_array (cache, ctx) = (cache, Array ([], ctx))
+  let on_end_array (cache, ctx) =
+    match ctx with
+    | Array (res, parent) ->
+      let es = List.rev res in
+        (match es with
+        |  [] -> (cache, push (`Array []) parent)
+        |  [`String "~#'"; e] -> (cache, push e parent)
+        |  elems -> (cache, push (`Array elems) parent))
+        
+  
+  let callbacks = {
+    YAJL.on_null = on_null;
+    on_bool = on_bool;
+    on_number = `Parse_numbers ((`Int64 on_int), on_float);
+    on_string = on_string;
+    on_start_map = on_start_map;
+    on_map_key = on_map_key;
+    on_end_map = on_end_map;
+    on_start_array = on_start_array;
+    on_end_array = on_end_array;
+  }
+    
+  let from_string str =
+    let p = YAJL.make_parser callbacks (Cache.empty, Focus []) in
+    let () = YAJL.parse p str in
+    let (_, result) = YAJL.complete_parse p in
+      match result with
+      | Focus [elem] -> elem
+      | x -> print_endline (ctx_to_string x); raise Internal_error
+      
+end
+
+type t = Parser.t
+let from_string = Parser.from_string
+
+let rec to_string x =
+  match x with
+  | `Null -> "null"
+  | `String s -> String.concat ["\""; s; "\""]
+  | `Bool true -> "true"
+  | `Bool false -> "false"
+  | `Int i -> Int64.to_string i
+  | `Float f -> Float.to_string f
+  | `Array arr ->
+    let contents = List.map arr ~f:to_string in
+    let contents' = String.concat ~sep:" | " contents in
+        String.concat (["["; contents'; "]"])
+  | `Map m ->
+    "?MAP"
+
+
+(*
 exception NotImplemented
+exception Invalid
 exception Parse_error of string
 exception Cache_lookup
 
@@ -54,12 +138,6 @@ type t =
     | `Float of Float.t
     | `Array of t list
     | `Map of (t * t) list
-    | `Keyword of string
-    | `Symbol of string
-    | `Date of Time.t
-    | `UUID of Uuid.t
-    | `URI of string
-    | `BigInt of Big_int.big_int
 ]
 
 let untag c t s =
@@ -88,33 +166,31 @@ let decode_string c s =
   match String.length s with
   | 0 | 1 -> (`String s, c)
   | _ -> (match (s.[0], s.[1]) with
-  	| ('^', _) ->
-      	  let i = Int.of_string (String.drop_prefix s 1)
-      	  in
-          (match Cache.find c i with
-          | Some v -> (`String v, c)
-          | None -> raise Cache_lookup)
-  	| ('~', '~') -> (`String (String.drop_prefix s 1), c)
-  	| ('~', '^') -> (`String (String.drop_prefix s 1), c)
-  	| ('~', tag) -> untag c tag (String.drop_prefix s 2)
-  	| _ -> (`String s, c))
+  | ('^', _) ->
+      let i = Int.of_string (String.drop_prefix s 1)
+      in
+       (match Cache.find c i with
+        | Some v -> (`String v, c)
+        | None -> raise Cache_lookup)
+  | ('~', '~') -> (`String (String.drop_prefix s 1), c)
+  | ('~', '^') -> (`String (String.drop_prefix s 1), c)
+  | ('~', tag) -> untag c tag (String.drop_prefix s 2)
+  | _ -> (`String s, c))
 
-type tag_view =
-   Yes of char
- | No
+type extension =
+    | Quote
+    | List
+    | Set
 
 let view_tag = function
-  | [] -> No
+  | [] -> None
   | ((`String h) :: t) ->
-      (match String.length h with
-      | 0 -> No;
-      | 1 -> No;
-      | 2 -> No;
-      | _ ->
-  	(match h.[0], h.[1] with
-  	| ('~', '#') -> Yes h.[2]
-  	| _ -> No))
-  | _ -> No
+      (match h with
+       | "~#'" -> Some Quote
+       | "~#list" -> Some List
+       | "~#set" -> Some Set
+       | _ -> None)
+  | _ -> None
 
 let rec to_string x =
   match x with
@@ -129,24 +205,33 @@ let rec to_string x =
   | `Date ts -> Time.to_string ts
   | `Array arr ->
     let contents = List.map arr ~f:to_string in
-    let contents' = String.concat ~sep:", " contents in
+    let contents' = String.concat ~sep:" | " contents in
         String.concat (["["; contents'; "]"])
   | `Map m ->
     "?MAP"
   | `URI s -> String.concat ["uri("; s; ")"]
   | `UUID uuid -> String.concat ["uuid("; Uuid.to_string uuid; ")"]
   | `BigInt i -> Big_int.string_of_big_int i
+  | `List lst ->
+    let contents = List.map lst ~f:to_string in
+    let contents' = String.concat ~sep:"; " contents in
+        String.concat (["["; contents'; "]"])
 
 
 let from_string str =
   let empty_cache = Cache.empty in
   let rec decode_array c arr =
       match view_tag arr with
-        | Yes '\'' ->
+        | Some Quote ->
             let [rest] = List.tl_exn arr in
               conv c rest
-        | Yes _ -> raise NotImplemented
-        | No ->
+        | Some List ->
+            let [rest] = List.tl_exn arr in
+            (match conv c rest with
+            | (`Array x, c) -> (`List x, c)
+            | _ -> raise Invalid)
+        | Some _ -> raise NotImplemented
+        | None ->
                  let f (es, c) e = let (r, c') = conv c e in (r :: es, c') in
                  let (r, c') = List.fold_left arr ~init:([], c) ~f:f in
                    (`Array (List.rev r), c')
@@ -172,4 +257,4 @@ let from_string str =
   in
     r
 
-
+*)

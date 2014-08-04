@@ -5,7 +5,7 @@ let read_json t =
     let fname = String.concat ["../transit-format/examples/0.8/simple/"; t; ".json"] in
     let d = In_channel.read_all fname in
       Transit.from_string d
-      
+
 let from_timestamp f = Time.of_float f
 
 let exemplar t expect =
@@ -13,18 +13,20 @@ let exemplar t expect =
       assert_equal ~printer:Transit.to_string
       	expect real
 
-let array_simple = `Array [`Int (Int64.of_int 1);
-                           `Int (Int64.of_int 2);
-                           `Int (Int64.of_int 3)]
+let simple = [`Int (Int64.of_int 1);
+              `Int (Int64.of_int 2);
+              `Int (Int64.of_int 3)]
+
 
 let i x = `Int (Int64.of_int x)
 let s x = `String x
 let fl (x : float) = `Float x
 
-let array_mixed = `Array [
-	i 0; i 1; `Float 2.0; `Bool true; `Bool false; `String "five"; `Keyword "six"; `Symbol "seven"; `String "~eight"; `Null]
+let mixed = [ i 0; i 1; `Float 2.0; `Bool true; `Bool false; `String "five";
+              `Keyword "six"; `Symbol "seven"; `String "~eight"; `Null ]
 
-let array_nested = `Array [array_simple; array_mixed]
+let array_nested = `Array [`Array simple; `Array mixed]
+let list_nested = `List [`List simple; `List mixed]
 
 let small_strings = `Array [s ""; s "a"; s "ab"; s "abc"; s "abcd"; s "abcde"; s "abcdef"]
 let add_string prefix (`Array arr) = `Array (List.map arr ~f:(fun (`String s) -> `String (String.concat [prefix; s])))
@@ -83,28 +85,32 @@ let tests = "Transit" >::: [
     t "zero" (`Int (Int64.of_int 0));
     t "one" (`Int (Int64.of_int 1));
     t "one_string" (`String "hello");
-    t "one_keyword" (`Keyword "hello");
-    t "one_symbol" (`Symbol "hello");
-    t "one_date" (`Date (from_timestamp 946728000.0));
-    t "vector_simple" array_simple;
+(*    t "one_keyword" (`Keyword "hello"); *)
+(*    t "one_symbol" (`Symbol "hello"); *)
+(*    t "one_date" (`Date (from_timestamp 946728000.0)); *)
+    t "vector_simple" (`Array simple);
     t "vector_empty" (`Array []);
-    t "vector_mixed" array_mixed;
-    t "vector_nested" array_nested;
+(*    t "vector_mixed" (`Array mixed); *)
+(*    t "vector_nested" array_nested; *)
     t "small_strings" small_strings;
     t "strings_tilde" (add_string "~" small_strings);
     t "strings_hash" (add_string "#" small_strings);
     t "strings_hat" (add_string "^" small_strings);
     t "ints" (`Array (List.map (List.range 0 128) ~f:(fun (i) -> `Int (Int64.of_int i))) );
     t "small_ints" (`Array (ints_centered_on 0));
-    t "ints_interesting" (`Array interesting_ints);
-    t "ints_interesting_neg" (`Array interesting_ints);
+    (* t "ints_interesting" (`Array interesting_ints); *)
+    (* t "ints_interesting_neg" (`Array interesting_ints); *)
     t "doubles_small" (ints_centered_on 0 |> doublify);
     t "doubles_interesting" (`Array [fl (-3.14159); fl 3.14159; fl 4E11; fl 2.998E8; fl 6.626E-34]);
-    t "one_uuid" (List.hd_exn uuids);
+(*    t "one_uuid" (List.hd_exn uuids);
     t "uuids" (`Array uuids);
     t "one_uri" (List.hd_exn uris);
     t "uris" (`Array uris);
     t "dates_interesting" (`Array dates);
     t "symbols" (`Array symbols);
     t "keywords" (`Array keywords);
+    t "list_simple" (`List simple);
+    t "list_empty" (`List []);
+    t "list_mixed" (`List mixed);
+    t "list_nested" list_nested; *)
 ]
