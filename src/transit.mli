@@ -7,16 +7,18 @@ type t =
     | `Int of Int64.t
     | `Float of Float.t
     | `Array of t list
-    | `Map of (t * t) list
+    | `Map of (t, t) Map.Poly.t
     | `Keyword of string
     | `Symbol of string
     | `Date of Time.t
     | `UUID of Uuid.t
     | `URI of string
     | `List of t list
-    | `Set of t list
+    | `Set of t Set.Poly.t
  ]
 
 val from_string : string -> t
 
 val to_string : t -> string
+
+include Sexpable with type t := t

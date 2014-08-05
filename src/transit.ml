@@ -21,8 +21,7 @@ module Parser = struct
       | `Bool of Bool.t
       | `Int of Int64.t
       | `Float of Float.t
-      | `Array of 'a list
-      | `Map of ('a * 'a) list ]
+      | `Array of 'a list ] with compare, sexp
   
   module Extension = struct
   
@@ -34,8 +33,9 @@ module Parser = struct
         | `Date of Time.t
         | `URI of string
         | `List of t list
-        | `Set of t list
-      ]
+        | `Set of t Set.Poly.t
+        | `Map of (t, t) Map.Poly.t
+      ] with sexp, compare
       
     let decode_tagged s = function
       | 'u' -> Some (`UUID (Uuid.of_string s))
@@ -53,7 +53,7 @@ module Parser = struct
 
     let decode_array es = function
       | "~#list" -> Some (`List (unarray es))
-      | "~#set" -> Some (`Set (unarray es))
+      | "~#set" -> Some (`Set (Set.Poly.of_list (unarray es)))
       | _ -> None
 
     let to_string = function
@@ -143,7 +143,7 @@ module Parser = struct
       | 0 | 1 -> `String s
       | _ -> analyze_string (s.[0], s.[1])
     
-  let cache_check cache str ctx =
+  let cache_check cache (str : String.t) ctx =
     let track () =
       let decoded = decode_string cache str in
         (Cache.track cache decoded, push decoded ctx)
@@ -164,7 +164,7 @@ module Parser = struct
       | (k :: v :: rest) -> (k, v) :: (loop rest)
       | _ -> raise (Parse_error "Map-as-array has an odd number of arguments")
     in
-      `Map (loop es)
+      `Map (Map.Poly.of_alist_exn (loop es))
 
   (* Parser rules *)
   exception Todo
@@ -230,9 +230,8 @@ let rec to_string x =
     let contents = List.map arr ~f:to_string in
     let contents' = String.concat ~sep:" | " contents in
         String.concat ["["; contents'; "]"]
-  | `Map m ->
-    let contents =
-        List.map m ~f:(fun (k, v) -> String.concat ["("; to_string k; ", "; to_string v; ")"]) in
-    let contents' = String.concat ~sep:", " contents in
-    	String.concat ["{"; contents'; "}"]
+  | `Map m -> "?MAP"
   | ext -> Parser.Extension.to_string ext
+
+let sexp_of_t = Parser.Extension.sexp_of_t
+let t_of_sexp = Parser.Extension.t_of_sexp
