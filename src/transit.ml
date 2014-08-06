@@ -1,11 +1,76 @@
 (* Transit *)
 open Core.Std
 
-(* This is a very simple cache implementation which runs on an 'string Int.Map.t'. This is a requirement for correct
-  * transit operation. We use a Map, even though an Array would be faster on one side of things and is suggested by
-  * the transit people. However, a map is symmetric and nicer for a functional language
-  *)
+(* We choose to make the base type a conglomeration of everything in the transit-format
+ * spec. This is deliberate, since it is hard to claim to support Transit without implementing
+ * All the spec, ground and extension types.
+ *
+ * This choice makes it a bit easier to work with the types in question. *)
+
+module T = struct
+type t =
+ [ | `Null
+   | `String of String.t
+   | `Bool of Bool.t
+   | `Int of Int64.t
+   | `Float of Float.t
+   | `Array of t list
+   | `Map of (t, t) Map.Poly.t
+   | `UUID of Uuid.t
+   | `Keyword of String.t
+   | `Symbol of String.t
+   | `Date of Time.t
+   | `URI of String.t
+   | `List of t list
+   | `Set of t Set.Poly.t ] with sexp, compare
+end
+
+module CacheCode = struct
+  exception Invalid_cache_code
+
+  let base_char_index = 48
+  let cache_code_digits = 44
+    
+  let to_int s =
+    match String.length s with
+    | 1 ->
+      (Char.to_int s.[0]) - base_char_index
+    | 2 ->
+      ((Char.to_int s.[0]) - base_char_index) * cache_code_digits +
+      ((Char.to_int s.[1]) - base_char_index)
+    | _ -> raise Invalid_cache_code
+      
+end
+
+module type Cache = sig
+  type t
   
+  val empty : t
+  val track : t -> T.t -> t
+  val find_exn : t -> int -> T.t
+end
+
+module Transit_cache = struct
+  type t = {
+	  m : T.t Int.Map.t;
+	  c : int
+  }
+
+  let empty =
+    { m = Int.Map.empty; c = 0 }
+    
+  let track { m; c } s =
+      let m' = Int.Map.add m
+                           ~key:c
+                           ~data:s in
+        { m = m';
+          c = c + 1 }
+          
+  let find_exn {m ; _ } x = Int.Map.find_exn m x
+
+end
+
+module Cache : Cache = Transit_cache
 
 module Parser = struct
 
@@ -14,96 +79,40 @@ module Parser = struct
   
   (* Used for errors in the parse input which we don't understand *)
   exception Parse_error of string
-
-  type 'a ground =
-    [ | `Null
-      | `String of string
-      | `Bool of Bool.t
-      | `Int of Int64.t
-      | `Float of Float.t
-      | `Array of 'a list ] with compare, sexp
   
-  module Extension = struct
-  
-    type t =
-      [ | t ground
-        | `UUID of Uuid.t
-        | `Keyword of string
-        | `Symbol of string
-        | `Date of Time.t
-        | `URI of string
-        | `List of t list
-        | `Set of t Set.Poly.t
-        | `Map of (t, t) Map.Poly.t
-      ] with sexp, compare
-      
-    let decode_tagged s = function
-      | 'u' -> Some (`UUID (Uuid.of_string s))
-      | 'r' -> Some (`URI s)
-      | ':' -> Some (`Keyword s)
-      | '$' -> Some (`Symbol s)
-      | 'm' ->
-        let f = Big_int.float_of_big_int (Big_int.big_int_of_string s) in
-          Some (`Date (Time.of_float (f /. 1000.0)))
-      | _ -> None
+  let decode_tagged s = function
+    | 'u' -> Some (`UUID (Uuid.of_string s))
+    | 'r' -> Some (`URI s)
+    | ':' -> Some (`Keyword s)
+    | '$' -> Some (`Symbol s)
+    | 'm' ->
+      let f = Big_int.float_of_big_int (Big_int.big_int_of_string s) in
+        Some (`Date (Time.of_float (f /. 1000.0)))
+    | _ -> None
 
-    let unarray = function
-      | `Array arr -> arr
-      | _ -> raise Internal_error
+  let unarray = function
+    | `Array arr -> arr
+    | _ -> raise Internal_error
 
-    let decode_array es = function
-      | "~#list" -> Some (`List (unarray es))
-      | "~#set" -> Some (`Set (Set.Poly.of_list (unarray es)))
-      | _ -> None
+  let map_as_array es =
+    let rec loop = function
+      | [] -> []
+      | (k :: v :: rest) -> (k, v) :: (loop rest)
+      | _ -> raise (Parse_error "Map-as-array has an odd number of arguments")
+    in
+      `Map (Map.Poly.of_alist_exn (loop es))
 
-    let to_string = function
-      | `UUID uuid -> String.concat ["uuid("; Uuid.to_string uuid; ")"]
-      | `URI uri -> String.concat ["uri("; uri; ")"]
-      | `Keyword s -> String.concat [":"; s]
-      | `Symbol s -> String.concat ["$"; s]
-      | `Date ts -> Time.to_string ts
-      | `List lst -> "?List"
-      | `Set set -> "?Set"
-      | _ -> raise Internal_error
-  end
-
-  type t = Extension.t
-
-  module type Cache = sig
-    type t
-    
-    val empty : t
-    val track : t -> Extension.t -> t
-    val find_exn : t -> int -> Extension.t
-  end
-
-  module Transit_cache = struct
-    type t = {
-	  m : Extension.t Int.Map.t;
-	  c : int
-    }
-
-    let empty =
-      { m = Int.Map.empty; c = 0 }
-      
-    let track { m; c } s =
-        let m' = Int.Map.add m
-                             ~key:c
-                             ~data:s in
-          { m = m';
-            c = c + 1 }
-            
-    let find_exn {m ; _ } x = Int.Map.find_exn m x
-
-  end
-
-  module Cache : Cache = Transit_cache
+  let decode_array es = function
+    | "~#list" -> Some (`List (unarray es))
+    | "~#set" -> Some (`Set (Set.Poly.of_list (unarray es)))
+    | "~#cmap" -> Some (map_as_array (unarray es))
+    | _ -> None
 
   (* Type of parser contexts *)
   type context =
-    | Focus of t list
-    | Array of t list * context
-    | Map of ((t * t) list) * context
+    | Focus of T.t list
+    | Array of T.t list * context
+    | Map of ((T.t * T.t) list) * context
 
   let ctx_to_string x =
     match x with
@@ -123,7 +132,7 @@ module Parser = struct
        | _ -> raise (Parse_error "decode_tagged ? case"))
     | 'i' -> `Int (Int64.of_string s)
     | 'd' -> `Float (Float.of_string s)
-    | t -> (match Extension.decode_tagged s t with
+    | t -> (match decode_tagged s t with
             | None -> `String s
             | Some value -> value)
 
@@ -135,7 +144,7 @@ module Parser = struct
       | ('~', t) -> decode_tagged (String.drop_prefix s 2) t
       | ('^', ' ') -> `String s (* Map as array *)
       | ('^', _) ->
-        let i = Int.of_string (String.drop_prefix s 1)in
+        let i = CacheCode.to_int (String.drop_prefix s 1)in
           Cache.find_exn cache i
       | _ -> `String s
     in
@@ -158,13 +167,6 @@ module Parser = struct
       else
         (cache, push (decode_string cache str) ctx)
 
-  let rec map_as_array es =
-    let rec loop = function
-      | [] -> []
-      | (k :: v :: rest) -> (k, v) :: (loop rest)
-      | _ -> raise (Parse_error "Map-as-array has an odd number of arguments")
-    in
-      `Map (Map.Poly.of_alist_exn (loop es))
 
   (* Parser rules *)
   exception Todo
@@ -185,7 +187,7 @@ module Parser = struct
       | (`String "^ ") :: elems -> (cache, push (map_as_array elems) parent)
       | [`String "~#'"; quoted] -> (cache, push quoted parent)
       | [`String tag; value] as elems ->
-          (match Extension.decode_array value tag with
+          (match decode_array value tag with
            | None -> (cache, push (`Array elems) parent)
            | Some value -> (cache, push value parent))
       | es -> (cache, push (`Array es) parent)
@@ -215,23 +217,8 @@ module Parser = struct
       
 end
 
-type t = Parser.Extension.t
+type t = T.t
 let from_string = Parser.from_string
 
-let rec to_string x =
-  match x with
-  | `Null -> "null"
-  | `String s -> String.concat ["\""; s; "\""]
-  | `Bool true -> "true"
-  | `Bool false -> "false"
-  | `Int i -> Int64.to_string i
-  | `Float f -> Float.to_string f
-  | `Array arr ->
-    let contents = List.map arr ~f:to_string in
-    let contents' = String.concat ~sep:" | " contents in
-        String.concat ["["; contents'; "]"]
-  | `Map m -> "?MAP"
-  | ext -> Parser.Extension.to_string ext
-
-let sexp_of_t = Parser.Extension.sexp_of_t
-let t_of_sexp = Parser.Extension.t_of_sexp
+let sexp_of_t = T.sexp_of_t
+let t_of_sexp = T.t_of_sexp

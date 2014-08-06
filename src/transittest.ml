@@ -1,17 +1,34 @@
 open OUnit2
 open Core.Std
 
+let cycle n lst =
+  let rec loop l acc = function
+    | 0 -> List.rev acc
+    | k ->
+      (match l with
+      | [] -> loop lst acc k
+      | e :: es -> loop es (e :: acc) (k-1) )
+  in
+    loop lst [] n
+
+let array_of_symbools m n =
+  let seeds =
+    let f x = `Keyword (String.concat ["key"; Printf.sprintf "%04d" x]) in
+      List.map (List.range 0 m) ~f:f
+  in
+    cycle n seeds
+
+let hash_of_size k =
+  let keywords = array_of_symbools k k in
+  let values = List.map (List.range 0 k) ~f:(fun x -> `Int (Int64.of_int x)) in
+    `Map (Map.Poly.of_alist_exn (List.zip_exn keywords values))
+
 let read_json t =
     let fname = String.concat ["../transit-format/examples/0.8/simple/"; t; ".json"] in
     let d = In_channel.read_all fname in
       Transit.from_string d
 
 let from_timestamp f = Time.of_float f
-
-let exemplar t expect =
-    let real = read_json t in
-      assert_equal ~printer:Sexp.to_string
-      	(Transit.sexp_of_t expect) (Transit.sexp_of_t real)
 
 let simple = [`Int (Int64.of_int 1);
               `Int (Int64.of_int 2);
@@ -89,11 +106,20 @@ let sym_strs = ["a"; "ab"; "abc"; "abcd"; "abcde"; "a1"; "b2"; "c3"; "a_b"]
 let symbols = List.map sym_strs ~f:(fun x -> `Symbol x)
 let keywords = List.map sym_strs ~f:(fun x -> `Keyword x)
 
+
+let one = `Int (Int64.of_int 1)
+let two = `Int (Int64.of_int 2)
+
+let exemplar t expect =
+    let real = read_json t in
+      assert_equal ~printer:Sexp.to_string
+      	(Transit.sexp_of_t real) (Transit.sexp_of_t expect)
+
 let t n expect = n >:: (fun(_) -> exemplar n expect)
 
 let tests = "Transit" >::: [
     "dummy" >::
-      (fun (_) -> assert_equal true true);
+      (fun (_) -> assert_equal ~printer:Sexp.to_string (String.sexp_of_t "this") (String.sexp_of_t "this"));
     t "nil" `Null;
     t "true" (`Bool true);
     t "false" (`Bool false);
@@ -135,4 +161,54 @@ let tests = "Transit" >::: [
     t "map_simple" map_simple;
     t "map_mixed" map_mixed;
     t "map_nested" map_nested;
+    t "map_string_keys" (`Map (Map.Poly.of_alist_exn
+    	[`String "first", `Int (Int64.of_int 1);
+    	 `String "second", `Int (Int64.of_int 2);
+    	 `String "third", `Int (Int64.of_int 3)]));
+   t "map_numeric_keys" (`Map (Map.Poly.of_alist_exn
+   	[`Int (Int64.of_int 1), `String "one";
+   	 `Int (Int64.of_int 2), `String "two"]));
+   t "map_vector_keys" (`Map (Map.Poly.of_alist_exn
+   	[`Array [one; one], `String "one";
+   	 `Array [two; two], `String "two"]));
+   t "map_unrecognized_vals" (`Map (Map.Poly.of_alist_exn
+   	[`Keyword "key", `String "~Unrecognized"]));
+   t "vector_unrecognized_vals" (`Array [`String "~Unrecognized"]);
+   t "vector_1935_keywords_repeated_twice" (`Array (array_of_symbools 1935 (1935*2)));
+   t "vector_1936_keywords_repeated_twice" (`Array (array_of_symbools 1936 (1936*2)));
+   t "vector_1937_keywords_repeated_twice" (`Array (array_of_symbools 1937 (1937*2)));
+   t "map_10_items" (hash_of_size 10);
+   
+   t "maps_two_char_sym_keys"
+       (`Array [
+         `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 1; `Keyword "bb", i 2]);
+         `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 3; `Keyword "bb", i 4]);
+         `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 5; `Keyword "bb", i 6])]);
+   t "maps_three_char_sym_keys"
+       (`Array [
+         `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 1; `Keyword "bbb", i 2]);
+         `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 3; `Keyword "bbb", i 4]);
+         `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 5; `Keyword "bbb", i 6])]);
+   t "maps_four_char_sym_keys"
+       (`Array [
+         `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 1; `Keyword "bbbb", i 2]);
+         `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 3; `Keyword "bbbb", i 4]);
+         `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 5; `Keyword "bbbb", i 6])]);
+
+   t "maps_two_char_string_keys"
+       (`Array [
+         `Map (Map.Poly.of_alist_exn [`String "aa", i 1; `String "bb", i 2]);
+         `Map (Map.Poly.of_alist_exn [`String "aa", i 3; `String "bb", i 4]);
+         `Map (Map.Poly.of_alist_exn [`String "aa", i 5; `String "bb", i 6])]);
+   t "maps_three_char_string_keys"
+       (`Array [
+         `Map (Map.Poly.of_alist_exn [`String "aaa", i 1; `String "bbb", i 2]);
+         `Map (Map.Poly.of_alist_exn [`String "aaa", i 3; `String "bbb", i 4]);
+         `Map (Map.Poly.of_alist_exn [`String "aaa", i 5; `String "bbb", i 6])]);
+   (* t "maps_four_char_string_keys"
+       (`Array [
+         `Map (Map.Poly.of_alist_exn [`String "aaaa", i 1; `String "bbbb", i 2]);
+         `Map (Map.Poly.of_alist_exn [`String "aaaa", i 3; `String "bbbb", i 4]);
+         `Map (Map.Poly.of_alist_exn [`String "aaaa", i 5; `String "bbbb", i 6])]); *)
+
 ]
