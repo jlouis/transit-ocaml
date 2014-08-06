@@ -15,7 +15,7 @@ type t =
     | `URI of string
     | `List of t list
     | `Set of t Set.Poly.t
- ]
+  ]
 
 val from_string : string -> t
 

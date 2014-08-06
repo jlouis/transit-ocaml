@@ -15,15 +15,15 @@
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *)
+*)
 
 open Core.Std
 
 (** Base64 codec.
 
-	8-bit characters are encoded into 6-bit ones using ASCII lookup tables.
-	Default tables maps 0..63 values on characters A-Z, a-z, 0-9, '+' and '/'
-	(in that order). 
+    	8-bit characters are encoded into 6-bit ones using ASCII lookup tables.
+    	Default tables maps 0..63 values on characters A-Z, a-z, 0-9, '+' and '/'
+    	(in that order). 
 *)
 
 val decode_string : string -> string
