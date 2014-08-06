@@ -74,25 +74,35 @@ module Cache : Cache = Transit_cache
 
 module Parser = struct
 
-  (* Used for internal errors in the parser that should never happen *)
+  (* Used for internal errors in the parser that should never happen
+   * Internal_errors means the parser is wrong in its assumptions somewhere
+   *)
   exception Internal_error
   
-  (* Used for errors in the parse input which we don't understand *)
+  (* Used for errors in the parse input which we don't understand
+   * Parser_errors puts the blame on the data in the file which are not valid
+   * Transit
+   *)
   exception Parse_error of string
   
-  let decode_tagged s = function
-    | 'u' -> Some (`UUID (Uuid.of_string s))
-    | 'r' -> Some (`URI s)
-    | ':' -> Some (`Keyword s)
-    | '$' -> Some (`Symbol s)
-    | 'm' ->
-      let f = Big_int.float_of_big_int (Big_int.big_int_of_string s) in
-        Some (`Date (Time.of_float (f /. 1000.0)))
-    | _ -> None
+  (* Type of parser contexts *)
+  type context =
+    | Empty
+    | Focused of T.t
+    | Array of T.t list * context
+  with sexp
+
+  let ctx_to_string x = sexp_of_context x |> Sexp.to_string
+
+  (* Push the element "e" onto the Context, depending on what it looks like *)
+  let push e = function
+    | Empty -> Focused e
+    | Array (es, ctx) -> Array (e :: es, ctx)
+    | Focused _ -> raise Internal_error
 
   let unarray = function
     | `Array arr -> arr
-    | _ -> raise Internal_error
+    | _ -> raise (Parse_error "Expected array but got something else")
 
   let map_as_array es =
     let rec loop = function
@@ -108,20 +118,6 @@ module Parser = struct
     | "~#cmap" -> Some (map_as_array (unarray es))
     | _ -> None
 
-  (* Type of parser contexts *)
-  type context =
-    | Focus of T.t list
-    | Array of T.t list * context
-    | Map of ((T.t * T.t) list) * context
-
-  let ctx_to_string x =
-    match x with
-    | Focus lst -> String.concat ~sep:" " ["Focus"; Int.to_string (List.length lst)]
-
-  let push e = function
-    | Focus es -> Focus (e :: es)
-    | Array (es, ctx) -> Array (e :: es, ctx)
-
   let decode_tagged s = function
     | '_' -> `Null
     | 's' -> `String s
@@ -132,9 +128,14 @@ module Parser = struct
        | _ -> raise (Parse_error "decode_tagged ? case"))
     | 'i' -> `Int (Int64.of_string s)
     | 'd' -> `Float (Float.of_string s)
-    | t -> (match decode_tagged s t with
-            | None -> `String s
-            | Some value -> value)
+    | 'u' -> (`UUID (Uuid.of_string s))
+    | 'r' -> (`URI s)
+    | ':' -> (`Keyword s)
+    | '$' -> (`Symbol s)
+    | 'm' ->
+      let f = Big_int.float_of_big_int (Big_int.big_int_of_string s) in
+        (`Date (Time.of_float (f /. 1000.0)))
+    | _ -> `String s
 
   let decode_string cache s =
     let analyze_string = function
@@ -167,7 +168,6 @@ module Parser = struct
       else
         (cache, push (decode_string cache str) ctx)
 
-
   (* Parser rules *)
   exception Todo
   let on_null (cache, ctx) = (cache, push `Null ctx)
@@ -195,30 +195,31 @@ module Parser = struct
       match ctx with
       | Array (res, parent) -> List.rev res |> handle_array parent
   
-  let callbacks = {
-    YAJL.on_null = on_null;
-    on_bool = on_bool;
-    on_number = `Parse_numbers ((`Int64 on_int), on_float);
-    on_string = on_string;
-    on_start_map = on_start_map;
-    on_map_key = on_map_key;
-    on_end_map = on_end_map;
-    on_start_array = on_start_array;
-    on_end_array = on_end_array;
-  }
+  module JSON = struct
+    let callbacks = {
+      YAJL.on_null = on_null;
+      on_bool = on_bool;
+      on_number = `Parse_numbers ((`Int64 on_int), on_float);
+      on_string = on_string;
+      on_start_map = on_start_map;
+      on_map_key = on_map_key;
+      on_end_map = on_end_map;
+      on_start_array = on_start_array;
+      on_end_array = on_end_array;
+    }
     
-  let from_string str =
-    let p = YAJL.make_parser callbacks (Cache.empty, Focus []) in
-    let () = YAJL.parse p str in
-    let (_, result) = YAJL.complete_parse p in
-      match result with
-      | Focus [elem] -> elem
-      | x -> print_endline (ctx_to_string x); raise Internal_error
-      
+    let from_string str =
+      let p = YAJL.make_parser callbacks (Cache.empty, Empty) in
+      let () = YAJL.parse p str in
+      let (_, result) = YAJL.complete_parse p in
+        match result with
+        | Focused elem -> elem
+        | x -> print_endline (ctx_to_string x); raise Internal_error
+  end
 end
 
 type t = T.t
-let from_string = Parser.from_string
+let from_string = Parser.JSON.from_string
 
 let sexp_of_t = T.sexp_of_t
 let t_of_sexp = T.t_of_sexp
