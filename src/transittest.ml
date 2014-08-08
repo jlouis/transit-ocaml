@@ -77,22 +77,33 @@ let uuids =
    `UUID (Uuid.of_string "b3ba141a-a776-48e4-9fae-a28ea8571f58");
   ]
 
+let json_int_breakpoint_max = Int.pow 2 53
+let json_int_breakpoint_min = Int.pow 2 53
+
 let ints_centered_on ?range:(m=5) n =
-  List.map (List.range (n - m) (m + n + 1)) ~f:(fun i -> `Int (Int64.of_int i))
+ List.map (List.range (n - m) (m + n + 1)) ~f:(fun i -> `Int (Int64.of_int i))
 
-let pow n x =
-  let rec worker : (int -> int) = function
-    | 0 -> 1
-    | k -> k * (worker (k-1))
-  in
-  worker x
+let rec range f t =
+      if Big_int.eq_big_int f  t
+      then []
+      else f :: (range (Big_int.add_big_int Big_int.unit_big_int f) t)
 
-let powers_of_two =
-  List.map (List.range 0 66) ~f:(fun x -> pow 2 x)
+let big_ints_centered_on m n =
+  let open Big_int in
+  range (sub_big_int n m) (add_big_int m (add_big_int n unit_big_int))
+
+let five = Big_int.big_int_of_int 5
+
+let big_powers_of_two =
+  let r = range Big_int.zero_big_int (Big_int.big_int_of_int 66) in
+  List.map r ~f:(fun x -> Big_int.power_int_positive_big_int 2 x)
+
+let big_interesting_ints =
+  List.map big_powers_of_two ~f:(fun x -> big_ints_centered_on five x)
 
 let interesting_ints =
-  List.map powers_of_two ~f:ints_centered_on
-  |> List.concat
+  let repr x = `Int (Int64.of_int 0) in
+    List.map big_interesting_ints ~f:repr
 
 let doublify ints =
   let floats = List.map ints ~f:(fun (`Int x) -> `Float (Int64.to_float x )) in
@@ -139,7 +150,7 @@ let tests = "Transit" >::: [
     t "strings_hat" (add_string "^" small_strings);
     t "ints" (`Array (List.map (List.range 0 128) ~f:(fun (i) -> `Int (Int64.of_int i))) );
     t "small_ints" (`Array (ints_centered_on 0));
-    (* t "ints_interesting" (`Array interesting_ints); *)
+    t "ints_interesting" (`Array interesting_ints);
     (* t "ints_interesting_neg" (`Array interesting_ints); *)
     t "doubles_small" (ints_centered_on 0 |> doublify);
     t "doubles_interesting" (`Array [fl (-3.14159); fl 3.14159; fl 4E11; fl 2.998E8; fl 6.626E-34]);
