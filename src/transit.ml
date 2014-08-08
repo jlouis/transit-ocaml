@@ -56,15 +56,17 @@ module Transit_cache = struct
     c : int
   }
 
+  let max_count = 44 * 44
+
   let empty =
     { m = Int.Map.empty; c = 0 }
 
   let track { m; c } s =
     let m' = Int.Map.add m
         ~key:c
-        ~data:s in
-    { m = m';
-      c = c + 1 }
+        ~data:s
+    in
+    if c > max_count then empty else { m = m'; c = c + 1 }
 
   let find_exn {m ; _ } x = Int.Map.find_exn m x
 
