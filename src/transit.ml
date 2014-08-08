@@ -56,30 +56,7 @@ module type Cache = sig
   val find_exn : t -> int -> T.t
 end
 
-(* Implementation via a map over integers *)
-module Transit_cache = struct
-  type t = {
-    m : T.t Int.Map.t;
-    c : int
-  }
 
-  let max_count = 44 * 44
-
-  let empty =
-    { m = Int.Map.empty; c = 0 }
-
-  let track { m; c } s =
-    let m' = Int.Map.add m
-        ~key:c
-        ~data:s
-    in
-    if c > max_count then empty else { m = m'; c = c + 1 }
-
-  let find_exn {m ; _ } x = Int.Map.find_exn m x
-
-end
-
-module Cache : Cache = Transit_cache
 
 (* Code for parsing transit structures *)
 module Parser = struct
@@ -105,6 +82,29 @@ module Parser = struct
       | Unknown of string
     with sexp
 
+    (* Implementation via a map over integers *)
+    module Transit_cache = struct
+      type t = { m : T.t Int.Map.t;
+         		 c : int }
+    
+      let max_count = 44 * 44
+    
+      let empty =
+        { m = Int.Map.empty; c = 0 }
+    
+      let track { m; c } s =
+        let m' = Int.Map.add m
+            ~key:c
+            ~data:s
+        in
+        if c > max_count then empty else { m = m'; c = c + 1 }
+    
+      let find_exn {m ; _ } x = Int.Map.find_exn m x
+    
+    end
+    
+    module Cache : Cache = Transit_cache
+   
     (* Type of parser contexts:
      * A parser is operating by means of a parsing stack which explains
      * "where-we-are" in a parse. It starts out empty but may be consed onto when we
@@ -164,7 +164,7 @@ module Parser = struct
   let decode_string s (cache, ctx) head =
     let track s x =
       if String.length s > 3
-      then (Cache.track cache x, Context.add ctx x)
+      then (Context.Cache.track cache x, Context.add ctx x)
       else (cache, Context.add ctx x) in
     match head with
     | ('^', ' ') ->
@@ -174,7 +174,7 @@ module Parser = struct
       | _ -> raise (Parse_error "Map-as-array marker in wrong location!"))
     | ('^', _) ->
       let i = CacheCode.to_int (String.drop_prefix s 1) in
-      (cache, Cache.find_exn cache i |> Context.add ctx)
+      (cache, Context.Cache.find_exn cache i |> Context.add ctx)
     | ('~', '~') -> (cache, `String (String.drop_prefix s 1) |> Context.add ctx)
     | ('~', '^') -> (cache, `String (String.drop_prefix s 1) |> Context.add ctx)
     | ('~', '#') ->
@@ -252,7 +252,7 @@ module Parser = struct
     }
 
     let from_string str =
-      let p = YAJL.make_parser callbacks (Cache.empty, Empty) in
+      let p = YAJL.make_parser callbacks (Context.Cache.empty, Empty) in
       let () = YAJL.parse p str in
       let (_, result) = YAJL.complete_parse p in
       match result with
