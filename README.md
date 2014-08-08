@@ -4,7 +4,7 @@ This repository implements the Transit format for OCaml. Current status is that 
 
 ## Implementation strategy
 
-Use yajl bindings to parse data into an polymorphic variant, running hydration as we go along on the path. The encoding simple walks the tree and outputs the right tags.
+Use yajl bindings to parse data into an polymorphic variant, running hydration as we go along on the path. The encoding simple walks the tree and outputs the right tags. The decoder makes use of a current context which is essentially a typed stack of what we are currently doing. End-of-array and End-of-map callbacks then inspect the current stack contents in order to decide what to do.
 
 Extensions are implemented by plugging in a functor with the extension types on top of the existing implementation.
 
@@ -33,11 +33,12 @@ OCaml fits nicely because it has everything different:
 * Algebraic Data Types with an expressive type system
 * An extremely powerful module system which allows you to program with functions at the module level (functors)
 
-So by implementing Transit in OCaml, we can find oddities of the format w.r.t a whole different class of programming languages.
+So by implementing Transit in OCaml, we can find oddities of the format w.r.t a whole different class of programming languages. I have tried to implement the spec clean-room and not looking at the existing implementations at all. This is in order to weed out eventual missing things in the spec.
 
 # Oddities found
 
-The format is generally sane and straightforward to work with.
+The format is generally sane and straightforward to work with. Though when implementing it, certain interesting things happen along
+the way. The flowchart diagrams help a lot in order to figure out when to make the cache lookup and when to process the data in question.
 
 · I started out by operating directly on a JSON structure. This didn't work well at all. Switching to yajl helped the implementation
   a lot since transit is so much better suited to stream-based parsing. Perhaps this should be mentioned explicitly you should be looking
@@ -66,3 +67,6 @@ The format is generally sane and straightforward to work with.
 · The keyword/symbol distinction seem quite odd to a programmer who has not seen lots of Common Lisp nor Clojure. In Erlang, of which I   am deeply familar, we only have "atoms" which are roughly symbols. Yet, they run the problem of being system-global so if you generate e  nough of those, you will eventually exhaust the systems atom-table and the node() will cease operating. Is the reason for the KW/Symbol distinction a way to solve this limitation? I read keywords evaluate to themselves, whereas symbols do not, but I would really like to know more about you feel the need for both representations in the transit format.
 · One strength of OCaml is that we can just invent a new type for Transit. This makes it very easy to map Transit onto ocaml since every we can simply abstract away the underlying representation of leaf values in the transit AST. If we did not have a native URI or UUID implementation—which we have—we could have opted for a string representation. The power here is we can exploit the type system and provide a rich description of what a transit term really is. In a more dynamic system (with less abstraction features) we would have forced to map transit values onto the underlying language directly. Here we can defer that decision to the user of the library.
 · I couldn't really read the spec the first time around and messed up cache generation. I don't really have a test for the cache wrapping but it could be good to have since I have no idea if the cache is wrapping as it should.
+· What happens if "^ " is in the middle of an array?
+· What happens if "~#list" and the like is in the middle of an array or somewhere it is not recognized as special?
+· The AST structure can be described by an EBNF grammar. Why isn't it?
