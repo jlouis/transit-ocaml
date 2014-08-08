@@ -47,17 +47,6 @@ module CacheCode = struct
 
 end
 
-(* Signature of the cache as an abstract thing *)
-module type Cache = sig
-  type t
-
-  val empty : t
-  val track : t -> T.t -> t
-  val find_exn : t -> int -> T.t
-end
-
-
-
 (* Code for parsing transit structures *)
 module Parser = struct
 
@@ -91,7 +80,10 @@ module Parser = struct
 
     (* Implementation via a map over integers *)
     module Transit_cache = struct
-      type t = { m : T.t Int.Map.t;
+      type entry = ETransit of T.t
+                 | ETag of tag
+
+      type t = { m : entry Int.Map.t;
          		 c : int }
     
       let max_count = 44 * 44
@@ -106,11 +98,14 @@ module Parser = struct
         in
         if c > max_count then empty else { m = m'; c = c + 1 }
     
+      let track_transit x v = track x (ETransit v)
+      let track_tag x v = track x (ETag v)
+
       let find_exn {m ; _ } x = Int.Map.find_exn m x
     
     end
     
-    module Cache : Cache = Transit_cache
+    module Cache = Transit_cache
    
     (* Type of parser contexts:
      * A parser is operating by means of a parsing stack which explains
@@ -137,8 +132,8 @@ module Parser = struct
     (* For convenience *)
     let to_string (Ctx (_, x)) = sexp_of_context x |> Sexp.to_string
 
-	let track (Ctx (cache, ctx)) x =
-	    Ctx (Cache.track cache x, ctx)
+	let track_transit (Ctx (cache, ctx)) x =
+	    Ctx (Cache.track_transit cache x, ctx)
 
     (* Push the element "e" onto the Context, depending on what it looks like. Essentially it "does the right thing™"  *)
     let add ((Ctx (cache, ctx)) as cx) e =
@@ -150,7 +145,7 @@ module Parser = struct
       | MapKey (es, ctx) ->
           (match e with
            | `String s when String.length s > 3 ->
-               Ctx (Cache.track cache e, MapValue (e, es, ctx))
+               Ctx (Cache.track_transit cache e, MapValue (e, es, ctx))
            | _ ->
                Ctx (cache, MapValue (e, es, ctx)) )
       | MapValue (k, es, ctx) -> Ctx (cache, MapKey ((k, e) :: es, ctx))
@@ -190,7 +185,9 @@ module Parser = struct
        | Focused _ -> raise (Parse_error "end_of_array called in Focused context")
 
     let cache_lookup ( (Ctx (cache, _)) as cx ) s =
-      CacheCode.to_int s |> Cache.find_exn cache |> add cx
+      match CacheCode.to_int s |> Cache.find_exn cache with
+      | Cache.ETransit x -> add cx x
+      | _ -> raise Internal_error
       
   end
 
@@ -218,7 +215,7 @@ module Parser = struct
   let decode_string s ctx head =
     let track s x =
       if String.length s > 3
-      then Context.add (Context.track ctx x) x
+      then Context.add (Context.track_transit ctx x) x
       else Context.add ctx x in
     match head with
     | ('^', ' ') -> Context.push_map ctx
