@@ -99,8 +99,8 @@ module Parser = struct
   type tag =
     | Quote
     | List
-    | CMap
     | Set
+    | CMap
     | Unknown of string
   with sexp
 
@@ -187,6 +187,11 @@ module Parser = struct
        | MapKey (_, _) -> track s (`String s)
        | _ -> (cache, push (`String s) ctx))
 
+  let rec pairup = function
+    | [] -> []
+    | k :: v :: rest -> (k, v) :: (pairup rest)
+    | _ -> raise (Parse_error "Odd number of elements in cmap")
+
   (* Parser rules *)
   exception Todo
   let on_null (cache, ctx) = (cache, push `Null ctx)
@@ -199,22 +204,26 @@ module Parser = struct
     | 0 | 1 -> (cache, push (`String str) ctx)
     | _ -> decode_string str (cache, ctx) (str.[0], str.[1])
   let on_start_map _ = raise Todo
-  let on_map_key _ buf offset len = raise Todo
+  let on_map_key _ _ _ _ = raise Todo
   let on_end_map _ = raise Todo
   let on_start_array (cache, ctx) = (cache, Array ([], ctx))
   let on_end_array (cache, ctx) =
-    let handle_array parent = function
-      | [] -> (cache, push (`Array []) parent)
-      | (`String "^ ") :: elems -> (cache, push (map_as_array elems) parent)
-      | [`String "~#'"; quoted] -> (cache, push quoted parent)
-      | [`String tag; value] as elems ->
-        (match decode_array value tag with
-         | None -> (cache, push (`Array elems) parent)
-         | Some value -> (cache, push value parent))
-      | es -> (cache, push (`Array es) parent)
-    in
-    match ctx with
-    | Array (res, parent) -> List.rev res |> handle_array parent
+    (cache,
+     match ctx with
+     | Array (res, parent) -> push (`Array (List.rev res)) parent
+     | TaggedArray (List, [`Array res], parent) -> push (`List res) parent
+     | TaggedArray (List, _, _) -> raise (Parse_error "Wrong ~#list encoding")
+     | TaggedArray (Set, [`Array res], parent) -> push (`Set (Set.Poly.of_list res)) parent
+     | TaggedArray (Set, _, _) -> raise (Parse_error "Wrong ~#set encoding")
+     | TaggedArray (Quote, [res], parent) -> push res parent
+     | TaggedArray (Quote, _, _) -> raise (Parse_error "Quote with multi-elem array")
+     | TaggedArray (CMap, [`Array res], parent) ->
+         push (`Map (Map.Poly.of_alist_exn (pairup res))) parent
+     | MapValue (_, _, _) -> raise (Parse_error "Odd number of k/v pairs in map-as-array or cmap")
+     | MapKey (res, parent) -> push (`Map (Map.Poly.of_alist_exn res)) parent
+     | Empty -> raise (Parse_error "end_of_array called in Empty context")
+     | Focused _ -> raise (Parse_error "end_of_array called in Focused context")
+    )
 
   module JSON = struct
     let callbacks = {

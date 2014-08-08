@@ -110,12 +110,12 @@ let keywords = List.map sym_strs ~f:(fun x -> `Keyword x)
 let one = `Int (Int64.of_int 1)
 let two = `Int (Int64.of_int 2)
 
-let exemplar t expect =
+let exemplar t expected =
   let real = read_json t in
   assert_equal ~printer:Sexp.to_string
-    (Transit.sexp_of_t real) (Transit.sexp_of_t expect)
+    (Transit.sexp_of_t expected) (Transit.sexp_of_t real)
 
-let t n expect = n >:: (fun(_) -> exemplar n expect)
+let t n expected = n >:: (fun(_) -> exemplar n expected)
 
 let tests = "Transit" >::: [
     "dummy" >::
