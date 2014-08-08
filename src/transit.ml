@@ -7,6 +7,7 @@ open Core.Std
  *
  * This choice makes it a bit easier to work with the types in question. *)
 
+(* module T contains the Transit format specification with comparators and sexp'ers *)
 module T = struct
   type t =
     [ | `Null
@@ -25,6 +26,10 @@ module T = struct
       | `Set of t Set.Poly.t ] with sexp, compare
 end
 
+(* Cache codes in transit follow a radix 44 encoding. Transform these into integers
+ * internally by means of helper functions. There are deliberately no CacheCode.t internal
+ * representation
+ *)
 module CacheCode = struct
   exception Invalid_cache_code
 
@@ -42,6 +47,7 @@ module CacheCode = struct
 
 end
 
+(* Signature of the cache as an abstract thing *)
 module type Cache = sig
   type t
 
@@ -50,6 +56,7 @@ module type Cache = sig
   val find_exn : t -> int -> T.t
 end
 
+(* Implementation via a map over integers *)
 module Transit_cache = struct
   type t = {
     m : T.t Int.Map.t;
@@ -74,6 +81,7 @@ end
 
 module Cache : Cache = Transit_cache
 
+(* Code for parsing transit structures *)
 module Parser = struct
 
   (* Used for internal errors in the parser that should never happen
@@ -87,38 +95,40 @@ module Parser = struct
   *)
   exception Parse_error of string
 
-  (* Type of parser contexts *)
+  (* When decoding arrays, they will be tagged. These are the possible tag values *)
+  type tag =
+    | Quote
+    | List
+    | CMap
+    | Set
+    | Unknown of string
+  with sexp
+
+  (* Type of parser contexts:
+   * A parser is operating by means of a parsing stack which explains
+   * "where-we-are" in a parse. It starts out empty but may be consed onto when we
+   * enter a new context (an array say). Note the transit-parser is context sensitive, so
+   * the context is needed for correct parses of data *)
   type context =
     | Empty
     | Focused of T.t
     | Array of T.t list * context
+    | TaggedArray of tag * T.t list * context
+    | MapKey of (T.t * T.t) list * context
+    | MapValue of T.t * (T.t * T.t) list * context
   with sexp
 
+  (* For convenience *)
   let ctx_to_string x = sexp_of_context x |> Sexp.to_string
 
-  (* Push the element "e" onto the Context, depending on what it looks like *)
+  (* Push the element "e" onto the Context, depending on what it looks like. Essentially it "does the right thing™"  *)
   let push e = function
     | Empty -> Focused e
-    | Array (es, ctx) -> Array (e :: es, ctx)
     | Focused _ -> raise Internal_error
-
-  let unarray = function
-    | `Array arr -> arr
-    | _ -> raise (Parse_error "Expected array but got something else")
-
-  let map_as_array es =
-    let rec loop = function
-      | [] -> []
-      | (k :: v :: rest) -> (k, v) :: (loop rest)
-      | _ -> raise (Parse_error "Map-as-array has an odd number of arguments")
-    in
-    `Map (Map.Poly.of_alist_exn (loop es))
-
-  let decode_array es = function
-    | "~#list" -> Some (`List (unarray es))
-    | "~#set" -> Some (`Set (Set.Poly.of_list (unarray es)))
-    | "~#cmap" -> Some (map_as_array (unarray es))
-    | _ -> None
+    | Array (es, ctx) -> Array (e :: es, ctx)
+    | TaggedArray (t, es, ctx) -> TaggedArray (t, e :: es, ctx)
+    | MapKey (es, ctx) -> MapValue (e, es, ctx)
+    | MapValue (k, es, ctx) -> MapKey ((k, e) :: es, ctx)
 
   let decode_tagged s = function
     | '_' -> `Null
@@ -139,36 +149,43 @@ module Parser = struct
       (`Date (Time.of_float (f /. 1000.0)))
     | _ -> `String s
 
-  let decode_string cache s =
-    let analyze_string = function
-      | ('~', '~') -> `String (String.drop_prefix s 1)
-      | ('~', '^') -> `String (String.drop_prefix s 1)
-      | ('~', '#') -> `String s (* Array tag *)
-      | ('~', t) -> decode_tagged (String.drop_prefix s 2) t
-      | ('^', ' ') -> `String s (* Map as array *)
-      | ('^', _) ->
-        let i = CacheCode.to_int (String.drop_prefix s 1)in
-        Cache.find_exn cache i
-      | _ -> `String s
-    in
-    match String.length s with
-    | 0 | 1 -> `String s
-    | _ -> analyze_string (s.[0], s.[1])
+  let decode_array_tag = function
+    | "~#'" -> Quote
+    | "~#list" -> List
+    | "~#set" -> Set
+    | "~#cmap" -> CMap
+    | s -> Unknown s
 
-  let cache_check cache (str : String.t) ctx =
-    let track () =
-      let decoded = decode_string cache str in
-      (Cache.track cache decoded, push decoded ctx)
-    in
-    if String.length str > 3
-    then
-      match (str.[0], str.[1]) with
-      | ('~', ':') -> track ()
-      | ('~', '$') -> track ()
-      | ('~', '#') -> track ()
-      | _ -> (cache, push (decode_string cache str) ctx)
-    else
-      (cache, push (decode_string cache str) ctx)
+  (* Decode and check if the string is cacheable *)
+  let decode_string s (cache, ctx) head =
+    let track s x =
+      if String.length s > 3
+      then (Cache.track cache x, push x ctx)
+      else (cache, push x ctx) in
+    match head with
+    | ('^', ' ') ->
+      (* If the thing we have is a map-as-array-marker, handle it specially! *)
+      (match ctx with
+      | Array ([], parent) -> (cache, MapKey ([], parent))
+      | _ -> raise (Parse_error "Map-as-array marker in wrong location!"))
+    | ('^', _) ->
+      let i = CacheCode.to_int (String.drop_prefix s 1) in
+      (cache, push (Cache.find_exn cache i) ctx)
+    | ('~', '~') -> (cache, push (`String (String.drop_prefix s 1)) ctx)
+    | ('~', '^') -> (cache, push (`String (String.drop_prefix s 1)) ctx)
+    | ('~', '#') ->
+        (match ctx with
+         | Array ([], parent) -> (cache, TaggedArray (decode_array_tag s, [], parent))
+         | _ -> raise (Parse_error "Array tag, but not parsing an array"))
+    | ('~', t) ->
+       (match decode_tagged (String.drop_prefix s 2) t with
+       | `Symbol s -> track s (`Symbol s)
+       | `Keyword k -> track s (`Keyword k)
+       | value -> (cache, push value ctx))
+    | _ ->
+      (match ctx with
+       | MapKey (_, _) -> track s (`String s)
+       | _ -> (cache, push (`String s) ctx))
 
   (* Parser rules *)
   exception Todo
@@ -178,7 +195,9 @@ module Parser = struct
   let on_float (cache, ctx) f = (cache, push (`Float f) ctx)
   let on_string (cache, ctx) buf offset len =
     let str = String.sub buf offset len in
-    cache_check cache str ctx
+    match String.length str with
+    | 0 | 1 -> (cache, push (`String str) ctx)
+    | _ -> decode_string str (cache, ctx) (str.[0], str.[1])
   let on_start_map _ = raise Todo
   let on_map_key _ buf offset len = raise Todo
   let on_end_map _ = raise Todo
