@@ -95,40 +95,49 @@ module Parser = struct
   *)
   exception Parse_error of string
 
-  (* When decoding arrays, they will be tagged. These are the possible tag values *)
-  type tag =
-    | Quote
-    | List
-    | Set
-    | CMap
-    | Unknown of string
-  with sexp
+  module Context = struct
+    (* When decoding arrays, they will be tagged. These are the possible tag values *)
+    type tag =
+      | Quote
+      | List
+      | Set
+      | CMap
+      | Unknown of string
+    with sexp
 
-  (* Type of parser contexts:
-   * A parser is operating by means of a parsing stack which explains
-   * "where-we-are" in a parse. It starts out empty but may be consed onto when we
-   * enter a new context (an array say). Note the transit-parser is context sensitive, so
-   * the context is needed for correct parses of data *)
-  type context =
-    | Empty
-    | Focused of T.t
-    | Array of T.t list * context
-    | TaggedArray of tag * T.t list * context
-    | MapKey of (T.t * T.t) list * context
-    | MapValue of T.t * (T.t * T.t) list * context
-  with sexp
+    (* Type of parser contexts:
+     * A parser is operating by means of a parsing stack which explains
+     * "where-we-are" in a parse. It starts out empty but may be consed onto when we
+     * enter a new context (an array say). Note the transit-parser is context sensitive, so
+     * the context is needed for correct parses of data *)
+    type context =
+      | Empty
+      | Focused of T.t
+      | Array of T.t list * context
+      | TaggedArray of tag * T.t list * context
+      | MapKey of (T.t * T.t) list * context
+      | MapValue of T.t * (T.t * T.t) list * context
+    with sexp
 
-  (* For convenience *)
-  let ctx_to_string x = sexp_of_context x |> Sexp.to_string
+    (* For convenience *)
+    let to_string x = sexp_of_context x |> Sexp.to_string
 
-  (* Push the element "e" onto the Context, depending on what it looks like. Essentially it "does the right thing™"  *)
-  let push e = function
-    | Empty -> Focused e
-    | Focused _ -> raise Internal_error
-    | Array (es, ctx) -> Array (e :: es, ctx)
-    | TaggedArray (t, es, ctx) -> TaggedArray (t, e :: es, ctx)
-    | MapKey (es, ctx) -> MapValue (e, es, ctx)
-    | MapValue (k, es, ctx) -> MapKey ((k, e) :: es, ctx)
+    (* Push the element "e" onto the Context, depending on what it looks like. Essentially it "does the right thing™"  *)
+    let push e = function
+      | Empty -> Focused e
+      | Focused _ -> raise Internal_error
+      | Array (es, ctx) -> Array (e :: es, ctx)
+      | TaggedArray (t, es, ctx) -> TaggedArray (t, e :: es, ctx)
+      | MapKey (es, ctx) -> MapValue (e, es, ctx)
+      | MapValue (k, es, ctx) -> MapKey ((k, e) :: es, ctx)
+
+    let tag_of_string = function
+      | "~#'" -> Quote
+      | "~#list" -> List
+      | "~#set" -> Set
+      | "~#cmap" -> CMap
+      | s -> Unknown s
+  end
 
   let decode_tagged s = function
     | '_' -> `Null
@@ -149,43 +158,37 @@ module Parser = struct
       (`Date (Time.of_float (f /. 1000.0)))
     | _ -> `String s
 
-  let decode_array_tag = function
-    | "~#'" -> Quote
-    | "~#list" -> List
-    | "~#set" -> Set
-    | "~#cmap" -> CMap
-    | s -> Unknown s
 
   (* Decode and check if the string is cacheable *)
   let decode_string s (cache, ctx) head =
     let track s x =
       if String.length s > 3
-      then (Cache.track cache x, push x ctx)
-      else (cache, push x ctx) in
+      then (Cache.track cache x, Context.push x ctx)
+      else (cache, Context.push x ctx) in
     match head with
     | ('^', ' ') ->
       (* If the thing we have is a map-as-array-marker, handle it specially! *)
       (match ctx with
-      | Array ([], parent) -> (cache, MapKey ([], parent))
+      | Array ([], parent) -> (cache, Context.MapKey ([], parent))
       | _ -> raise (Parse_error "Map-as-array marker in wrong location!"))
     | ('^', _) ->
       let i = CacheCode.to_int (String.drop_prefix s 1) in
-      (cache, push (Cache.find_exn cache i) ctx)
-    | ('~', '~') -> (cache, push (`String (String.drop_prefix s 1)) ctx)
-    | ('~', '^') -> (cache, push (`String (String.drop_prefix s 1)) ctx)
+      (cache, Context.push (Cache.find_exn cache i) ctx)
+    | ('~', '~') -> (cache, Context.push (`String (String.drop_prefix s 1)) ctx)
+    | ('~', '^') -> (cache, Context.push (`String (String.drop_prefix s 1)) ctx)
     | ('~', '#') ->
         (match ctx with
-         | Array ([], parent) -> (cache, TaggedArray (decode_array_tag s, [], parent))
+         | Array ([], parent) -> (cache, TaggedArray (Context.tag_of_string s, [], parent))
          | _ -> raise (Parse_error "Array tag, but not parsing an array"))
     | ('~', t) ->
        (match decode_tagged (String.drop_prefix s 2) t with
        | `Symbol s -> track s (`Symbol s)
        | `Keyword k -> track s (`Keyword k)
-       | value -> (cache, push value ctx))
+       | value -> (cache, Context.push value ctx))
     | _ ->
       (match ctx with
        | MapKey (_, _) -> track s (`String s)
-       | _ -> (cache, push (`String s) ctx))
+       | _ -> (cache, Context.push (`String s) ctx))
 
   let rec pairup = function
     | [] -> []
@@ -194,35 +197,44 @@ module Parser = struct
 
   (* Parser rules *)
   exception Todo
-  let on_null (cache, ctx) = (cache, push `Null ctx)
-  let on_bool (cache, ctx) b = (cache, push (`Bool b) ctx)
-  let on_int (cache, ctx) i = (cache, push (`Int i) ctx)
-  let on_float (cache, ctx) f = (cache, push (`Float f) ctx)
+  let on_null (cache, ctx) = (cache, Context.push `Null ctx)
+
+  let on_bool (cache, ctx) b = (cache, Context.push (`Bool b) ctx)
+
+  let on_int (cache, ctx) i = (cache, Context.push (`Int i) ctx)
+
+  let on_float (cache, ctx) f = (cache, Context.push (`Float f) ctx)
+
   let on_string (cache, ctx) buf offset len =
     let str = String.sub buf offset len in
     match String.length str with
-    | 0 | 1 -> (cache, push (`String str) ctx)
+    | 0 | 1 -> (cache, Context.push (`String str) ctx)
     | _ -> decode_string str (cache, ctx) (str.[0], str.[1])
+
   let on_start_map _ = raise Todo
+
   let on_map_key _ _ _ _ = raise Todo
+
   let on_end_map _ = raise Todo
-  let on_start_array (cache, ctx) = (cache, Array ([], ctx))
+
+  let on_start_array (cache, ctx) = (cache, Context.Array ([], ctx))
+
   let on_end_array (cache, ctx) =
     (cache,
      match ctx with
-     | Array (res, parent) -> push (`Array (List.rev res)) parent
-     | TaggedArray (List, [`Array res], parent) -> push (`List res) parent
-     | TaggedArray (List, _, _) -> raise (Parse_error "Wrong ~#list encoding")
-     | TaggedArray (Set, [`Array res], parent) -> push (`Set (Set.Poly.of_list res)) parent
-     | TaggedArray (Set, _, _) -> raise (Parse_error "Wrong ~#set encoding")
-     | TaggedArray (Quote, [res], parent) -> push res parent
-     | TaggedArray (Quote, _, _) -> raise (Parse_error "Quote with multi-elem array")
-     | TaggedArray (CMap, [`Array res], parent) ->
-         push (`Map (Map.Poly.of_alist_exn (pairup res))) parent
-     | MapValue (_, _, _) -> raise (Parse_error "Odd number of k/v pairs in map-as-array or cmap")
-     | MapKey (res, parent) -> push (`Map (Map.Poly.of_alist_exn res)) parent
-     | Empty -> raise (Parse_error "end_of_array called in Empty context")
-     | Focused _ -> raise (Parse_error "end_of_array called in Focused context")
+     | Context.Array (res, parent) -> Context.push (`Array (List.rev res)) parent
+     | Context.TaggedArray (Context.List, [`Array res], parent) -> Context.push (`List res) parent
+     | Context.TaggedArray (Context.List, _, _) -> raise (Parse_error "Wrong ~#list encoding")
+     | Context.TaggedArray (Context.Set, [`Array res], parent) -> Context.push (`Set (Set.Poly.of_list res)) parent
+     | Context.TaggedArray (Context.Set, _, _) -> raise (Parse_error "Wrong ~#set encoding")
+     | Context.TaggedArray (Context.Quote, [res], parent) -> Context.push res parent
+     | Context.TaggedArray (Context.Quote, _, _) -> raise (Parse_error "Quote with multi-elem array")
+     | Context.TaggedArray (Context.CMap, [`Array res], parent) ->
+         Context.push (`Map (Map.Poly.of_alist_exn (pairup res))) parent
+     | Context.MapValue (_, _, _) -> raise (Parse_error "Odd number of k/v pairs in map-as-array or cmap")
+     | Context.MapKey (res, parent) -> Context.push (`Map (Map.Poly.of_alist_exn res)) parent
+     | Context.Empty -> raise (Parse_error "end_of_array called in Empty context")
+     | Context.Focused _ -> raise (Parse_error "end_of_array called in Focused context")
     )
 
   module JSON = struct
@@ -244,7 +256,7 @@ module Parser = struct
       let (_, result) = YAJL.complete_parse p in
       match result with
       | Focused elem -> elem
-      | x -> print_endline (ctx_to_string x); raise Internal_error
+      | x -> print_endline (Context.to_string x); raise Internal_error
   end
 end
 
