@@ -1,6 +1,11 @@
 # Encode/Decoder for the Transit format, OCaml version
 
-This repository implements the Transit format for OCaml. Current status is that it doesn't work entirely as expected. It is still under construction, so please bear this in mind. All signatures are subject to change at the moment if I realize something is not possible.
+This repository implements the Transit format for OCaml.
+
+# WARNING
+
+This is currently *experimental*. Everything is subject to change. It is not clear at this point if the approach is the right one. Details had
+to be rewritten a couple of times whenever I learned something new about how to handle this.
 
 ## Implementation strategy
 
