@@ -70,3 +70,9 @@ the way. The flowchart diagrams help a lot in order to figure out when to make t
 · What happens if "^ " is in the middle of an array?
 · What happens if "~#list" and the like is in the middle of an array or somewhere it is not recognized as special?
 · The AST structure can be described by an EBNF grammar. Why isn't it?
+· How are maps with multiplicity on keys handled ? That is the map
+
+	{ 1: 3
+	, 1: 5 } ?
+	
+· Where are string caching done? "^ "-maps only or also in "~#cmap"-maps?
