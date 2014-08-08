@@ -205,10 +205,10 @@ let tests = "Transit" >::: [
           `Map (Map.Poly.of_alist_exn [`String "aaa", i 1; `String "bbb", i 2]);
           `Map (Map.Poly.of_alist_exn [`String "aaa", i 3; `String "bbb", i 4]);
           `Map (Map.Poly.of_alist_exn [`String "aaa", i 5; `String "bbb", i 6])]);
-    (* t "maps_four_char_string_keys"
+    t "maps_four_char_string_keys"
         (`Array [
           `Map (Map.Poly.of_alist_exn [`String "aaaa", i 1; `String "bbbb", i 2]);
           `Map (Map.Poly.of_alist_exn [`String "aaaa", i 3; `String "bbbb", i 4]);
-          `Map (Map.Poly.of_alist_exn [`String "aaaa", i 5; `String "bbbb", i 6])]); *)
+          `Map (Map.Poly.of_alist_exn [`String "aaaa", i 5; `String "bbbb", i 6])]);
 
   ]

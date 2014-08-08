@@ -135,6 +135,9 @@ module Parser = struct
 	let track_transit (Ctx (cache, ctx)) x =
 	    Ctx (Cache.track_transit cache x, ctx)
 
+    let track_tag (Ctx (cache, ctx)) x =
+        Ctx (Cache.track_tag cache x, ctx)
+
     (* Push the element "e" onto the Context, depending on what it looks like. Essentially it "does the right thing™"  *)
     let add ((Ctx (cache, ctx)) as cx) e =
       match ctx with
@@ -157,9 +160,9 @@ module Parser = struct
 
     let push_array (Ctx (cache, ctx)) = Ctx (cache, Array ([], ctx))
 
-    let push_tagged_array (Ctx (cache, ctx)) s =
+    let push_tagged_array (Ctx (cache, ctx)) t =
      match ctx with
-     | Array ([], parent) -> Ctx (cache, TaggedArray (tag_of_string s, [], parent))
+     | Array ([], parent) -> Ctx (cache, TaggedArray (t, [], parent))
      | _ -> raise (Parse_error "Array tag, but not parsing an array")
 
     let pop_array (Ctx (cache, ctx)) =
@@ -187,7 +190,7 @@ module Parser = struct
     let cache_lookup ( (Ctx (cache, _)) as cx ) s =
       match CacheCode.to_int s |> Cache.find_exn cache with
       | Cache.ETransit x -> add cx x
-      | _ -> raise Internal_error
+      | Cache.ETag t -> push_tagged_array cx t
       
   end
 
@@ -222,7 +225,14 @@ module Parser = struct
     | ('^', _) -> Context.cache_lookup ctx (String.drop_prefix s 1)
     | ('~', '~') -> `String (String.drop_prefix s 1) |> Context.add ctx
     | ('~', '^') -> `String (String.drop_prefix s 1) |> Context.add ctx
-    | ('~', '#') -> Context.push_tagged_array ctx s
+    | ('~', '#') ->
+      let array_tag = Context.tag_of_string s in
+      let ctx' =
+        if String.length s > 3
+        then Context.track_tag ctx array_tag
+        else ctx
+      in
+      Context.push_tagged_array ctx' array_tag
     | ('~', t) ->
        (match decode_tagged (String.drop_prefix s 2) t with
        | `Symbol s -> track s (`Symbol s)
@@ -230,14 +240,11 @@ module Parser = struct
        | value -> Context.add ctx value)
     | _ -> Context.add ctx (`String s)
 
-  (* Parser rules *)
+  (* Parser functions *)
   exception Todo
   let on_null ctx = Context.add ctx `Null
-
   let on_bool ctx b = Context.add ctx (`Bool b)
-
   let on_int ctx i = Context.add ctx (`Int i)
-
   let on_float ctx f = Context.add ctx (`Float f)
 
   let on_string ctx buf offset len =
@@ -252,11 +259,6 @@ module Parser = struct
 
   let on_end_map _ = raise Todo
 
-  let on_start_array ctx = Context.push_array ctx
-
-  let on_end_array ctx = Context.pop_array ctx
-
-
   module JSON = struct
     let callbacks = {
       YAJL.on_null = on_null;
@@ -266,8 +268,8 @@ module Parser = struct
       on_start_map = on_start_map;
       on_map_key = on_map_key;
       on_end_map = on_end_map;
-      on_start_array = on_start_array;
-      on_end_array = on_end_array;
+      on_start_array = Context.push_array;
+      on_end_array = Context.pop_array;
     }
 
     let from_string str =
