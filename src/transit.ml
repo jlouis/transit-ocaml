@@ -1,6 +1,17 @@
 (* Transit *)
 open Core.Std
 
+module Big_int = struct
+  include Big_int
+  exception Error
+  
+  let sexp_of_big_int x = Sexp.Atom (Big_int.string_of_big_int x)
+  let big_int_of_sexp sexp =
+    match sexp with
+    | Sexp.Atom str -> Big_int.big_int_of_string str
+    | Sexp.List _ -> raise Error
+end
+
 (* We choose to make the base type a conglomeration of everything in the transit-format
  * spec. This is deliberate, since it is hard to claim to support Transit without implementing
  * All the spec, ground and extension types.
@@ -14,6 +25,7 @@ module T = struct
       | `String of String.t
       | `Bool of Bool.t
       | `Int of Int64.t
+      | `BigInt of Big_int.big_int
       | `Float of Float.t
       | `Array of t list
       | `Map of (t, t) Map.Poly.t

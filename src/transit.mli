@@ -5,6 +5,7 @@ type t =
     | `String of string
     | `Bool of Bool.t
     | `Int of Int64.t
+    | `BigInt of Big_int.big_int
     | `Float of Float.t
     | `Array of t list
     | `Map of (t, t) Map.Poly.t

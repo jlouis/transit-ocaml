@@ -100,9 +100,20 @@ let big_powers_of_two =
 
 let big_interesting_ints =
   List.map big_powers_of_two ~f:(fun x -> big_ints_centered_on five x)
+  |> List.concat
+
+let breakoff_1 =
+  Big_int.power_int_positive_int 2 53
+
+let breakoff_2 =
+  Big_int.power_int_positive_int 2 63
 
 let interesting_ints =
-  let repr x = `Int (Int64.of_int 0) in
+  let repr x = 
+    if Big_int.lt_big_int x breakoff_1 then `Int (Big_int.int64_of_big_int x)
+    else if Big_int.lt_big_int x breakoff_2 then `Int (Big_int.int64_of_big_int x)
+    else `BigInt x
+    in
     List.map big_interesting_ints ~f:repr
 
 let doublify ints =
