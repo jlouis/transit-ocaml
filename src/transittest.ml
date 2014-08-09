@@ -1,5 +1,6 @@
 open OUnit2
 open Core.Std
+open Sexplib.Std
 
 let cycle n lst =
   let rec loop l acc = function
@@ -77,9 +78,6 @@ let uuids =
    `UUID (Uuid.of_string "b3ba141a-a776-48e4-9fae-a28ea8571f58");
   ]
 
-let json_int_breakpoint_max = Int.pow 2 53
-let json_int_breakpoint_min = Int.pow 2 53
-
 let ints_centered_on ?range:(m=5) n =
  List.map (List.range (n - m) (m + n + 1)) ~f:(fun i -> `Int (Int64.of_int i))
 
@@ -92,14 +90,14 @@ let big_ints_centered_on m n =
   let open Big_int in
   range (sub_big_int n m) (add_big_int m (add_big_int n unit_big_int))
 
-let five = Big_int.big_int_of_int 5
+let two = Big_int.big_int_of_int 2
 
 let big_powers_of_two =
   let r = range Big_int.zero_big_int (Big_int.big_int_of_int 66) in
   List.map r ~f:(fun x -> Big_int.power_int_positive_big_int 2 x)
 
 let big_interesting_ints =
-  List.map big_powers_of_two ~f:(fun x -> big_ints_centered_on five x)
+  List.map big_powers_of_two ~f:(fun x -> big_ints_centered_on two x)
   |> List.concat
 
 let breakoff_1 =

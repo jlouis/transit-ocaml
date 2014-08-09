@@ -16,6 +16,7 @@ type t =
     | `URI of string
     | `List of t list
     | `Set of t Set.Poly.t
+    | `Tagged of char * t
   ]
 
 val from_string : string -> t

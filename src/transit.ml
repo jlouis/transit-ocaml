@@ -34,6 +34,7 @@ module T = struct
       | `Symbol of String.t
       | `Date of Time.t
       | `URI of String.t
+      | `Tagged of char * t
       | `List of t list
       | `Set of t Set.Poly.t ] with sexp, compare
 end
@@ -215,6 +216,7 @@ module Parser = struct
        | "f" -> `Bool false
        | _ -> raise (Parse_error "decode_tagged ? case"))
     | 'i' -> `Int (Int64.of_string s)
+    | 'n' -> `BigInt (Big_int.big_int_of_string s)
     | 'd' -> `Float (Float.of_string s)
     | 'u' -> (`UUID (Uuid.of_string s))
     | 'r' -> (`URI s)
@@ -223,7 +225,7 @@ module Parser = struct
     | 'm' ->
       let f = Big_int.float_of_big_int (Big_int.big_int_of_string s) in
       (`Date (Time.of_float (f /. 1000.0)))
-    | _ -> `String s
+    | t -> `Tagged (t, `String s)
 
 
   (* Decode and check if the string is cacheable *)

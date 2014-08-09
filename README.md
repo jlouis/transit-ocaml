@@ -27,7 +27,7 @@ Transit has been implemented for:
 
 * Python - Dynamic typing, Object Orientation
 * Ruby - Dynamic typing, Object Orientation
-* Clojure - Dynamic typing, Objects al'a Carte-orientation
+* Clojure - Dynamic typing, Objects à la Carte-orientation
 * Javascript - Dynamic typing, Prototypical OO
 * Java - Static typing, Something not-quite-Alan-Kay-objects-but-more-like-Stoustrup-perhaps-Gosling/Steele-objects
 
@@ -81,3 +81,5 @@ the way. The flowchart diagrams help a lot in order to figure out when to make t
 	, 1: 5 } ?
 	
 * Where are string caching done? "^ "-maps only or also in "~#cmap"-maps?
+* Canonical representation of integers? There are 3 ways
+* The cache needs to contain two kinds of values: Transit values and Array tag values.
