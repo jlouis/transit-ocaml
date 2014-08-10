@@ -12,7 +12,7 @@ type t =
     | `Map of (t, t) Map.Poly.t
     | `Keyword of string
     | `Symbol of string
-    | `Date of Time.t
+    | `Time of Time.t
     | `UUID of Uuid.t
     | `URI of string
     | `List of t list

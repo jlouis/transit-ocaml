@@ -33,7 +33,7 @@ module T = struct
       | `UUID of Uuid.t
       | `Keyword of String.t
       | `Symbol of String.t
-      | `Date of Time.t
+      | `Time of Time.t
       | `URI of String.t
       | `Tagged of char * t
       | `List of t list
@@ -232,7 +232,10 @@ module Parser = struct
     | '$' -> (`Symbol s)
     | 'm' ->
       let f = Big_int.float_of_big_int (Big_int.big_int_of_string s) in
-      (`Date (Time.of_float (f /. 1000.0)))
+      (`Time (Time.of_float (f /. 1000.0)))
+    | 't' ->
+      let tp = Time.of_string s in
+      `Time tp
     | t -> `Tagged (t, `String s)
 
 
