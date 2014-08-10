@@ -163,6 +163,10 @@ let tests = "Transit" >::: [
     t "list_nested" list_nested;
     t "list_simple" (`List simple);
     t "map_10_items" (hash_of_size 10);
+    t "map_10_nested" `Null;
+    t "map_1935_nested" `Null;
+    t "map_1936_nested" `Null;
+    t "map_1937_nested" `Null;
     t "map_mixed" map_mixed;
     t "map_nested" map_nested;
     t "map_numeric_keys" (`Map (Map.Poly.of_alist_exn
@@ -176,6 +180,7 @@ let tests = "Transit" >::: [
     t "map_vector_keys" (`Map (Map.Poly.of_alist_exn
                                  [`Array [one; one], `String "one";
                                   `Array [two; two], `String "two"]));
+    t "map_unrecognized_keys" `Null;
     t "map_unrecognized_vals" (`Map (Map.Poly.of_alist_exn
                                        [`Keyword "key", `String "~Unrecognized"]));
     t "maps_four_char_string_keys"
@@ -208,6 +213,8 @@ let tests = "Transit" >::: [
           `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 1; `Keyword "bb", i 2]);
           `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 3; `Keyword "bb", i 4]);
           `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 5; `Keyword "bb", i 6])]);
+    t "map_vector_keys" `Null;
+    
     t "nil" `Null;
     t "one_date" (`Date (from_timestamp 946728000.0)); 
     t "one" (`Int (Int64.of_int 1));
