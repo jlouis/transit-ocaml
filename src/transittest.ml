@@ -24,11 +24,6 @@ let hash_of_size k =
   let values = List.map (List.range 0 k) ~f:(fun x -> `Int (Int64.of_int x)) in
   `Map (Map.Poly.of_alist_exn (List.zip_exn keywords values))
 
-let read_json t =
-  let fname = String.concat ["../transit-format/examples/0.8/simple/"; t; ".json"] in
-  let d = In_channel.read_all fname in
-  Transit.from_string d
-
 let from_timestamp f = Time.of_float f
 
 let simple = [`Int (Int64.of_int 1);
@@ -129,27 +124,38 @@ let keywords = List.map sym_strs ~f:(fun x -> `Keyword x)
 let one = `Int (Int64.of_int 1)
 let two = `Int (Int64.of_int 2)
 
-let exemplar t expected =
-  let real = read_json t in
-  assert_equal ~printer:Sexp.to_string
-    (Transit.sexp_of_t expected) (Transit.sexp_of_t real)
+type test_type = JSON | JSON_Verbose
 
-let t n expected = n >:: (fun(_) -> exemplar n expected)
-
-let read_json t =
-  let fname = String.concat ["../transit-format/examples/0.8/simple/"; t; ".json"] in
+let read ext t =
+  let fname = String.concat ["../transit-format/examples/0.8/simple/"; t; "."; ext] in
   let d = In_channel.read_all fname in
   Transit.from_string d
 
-let tests = "Transit" >::: [
-    "dummy" >::
-    (fun (_) -> assert_equal ~printer:Sexp.to_string (String.sexp_of_t "this") (String.sexp_of_t "this"));
-    "large" >::
-      (fun (_) ->
-        let fname = "../transit-format/examples/0.8/example.json" in
-        let d = In_channel.read_all fname in
-        let decoded = Transit.from_string d in
-        assert_equal true true );
+let exemplar ty t expected =
+  let real = match ty with
+             | JSON -> read "json" t
+             | JSON_Verbose -> read "verbose.json" t
+  in
+  assert_equal ~printer:Sexp.to_string
+    (Transit.sexp_of_t expected) (Transit.sexp_of_t real)
+
+
+let t ty n expected = n >:: (fun(_) -> exemplar ty n expected)
+
+
+let example_tests =
+    ["dummy" >::
+     (fun (_) -> assert_equal ~printer:Sexp.to_string (String.sexp_of_t "this") (String.sexp_of_t "this"));
+     "large" >::
+       (fun (_) ->
+         let fname = "../transit-format/examples/0.8/example.json" in
+         let d = In_channel.read_all fname in
+         let decoded = Transit.from_string d in
+         assert_equal true true );
+    ]
+
+let exemplar_tests t =
+  [
     t "dates_interesting" (`Array dates);
     t "doubles_interesting" (`Array [fl (-3.14159); fl 3.14159; fl 4E11; fl 2.998E8; fl 6.626E-34]);
     t "doubles_small" (ints_centered_on 0 |> doublify);
@@ -214,7 +220,6 @@ let tests = "Transit" >::: [
           `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 3; `Keyword "bb", i 4]);
           `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 5; `Keyword "bb", i 6])]);
     t "map_vector_keys" `Null;
-    
     t "nil" `Null;
     t "one_date" (`Date (from_timestamp 946728000.0)); 
     t "one" (`Int (Int64.of_int 1));
@@ -246,3 +251,14 @@ let tests = "Transit" >::: [
     t "vector_unrecognized_vals" (`Array [`String "~Unrecognized"]);
     t "zero" (`Int (Int64.of_int 0));
   ]
+
+let exemplar_tests_json = exemplar_tests (t JSON)
+let exemplar_tests_json_verbose = exemplar_tests (t JSON_Verbose)
+
+let tests =
+   "Transit" >::: [
+       "JSON" >::: exemplar_tests_json;
+       "Example" >::: example_tests;
+       "JSON_Verbose" >::: exemplar_tests_json_verbose;
+   ]
+
