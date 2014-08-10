@@ -115,7 +115,7 @@ let doublify ints =
 
 let dates =
   let points = [-6106017600000.0; 0.0; 946728000000.0; 1396909037000.0] in
-  List.map points ~f:(fun p -> `Date (from_timestamp (p /. 1000.0)))
+  List.map points ~f:(fun p -> `Time (from_timestamp (p /. 1000.0)))
 
 let sym_strs = ["a"; "ab"; "abc"; "abcd"; "abcde"; "a1"; "b2"; "c3"; "a_b"]
 let symbols = List.map sym_strs ~f:(fun x -> `Symbol x)
@@ -169,10 +169,18 @@ let exemplar_tests t =
     t "list_nested" list_nested;
     t "list_simple" (`List simple);
     t "map_10_items" (hash_of_size 10);
-    t "map_10_nested" `Null;
-    t "map_1935_nested" `Null;
-    t "map_1936_nested" `Null;
-    t "map_1937_nested" `Null;
+    t "map_10_nested" (`Map (Map.Poly.of_alist_exn
+                         [`Keyword "f", hash_of_size 10;
+                          `Keyword "s", hash_of_size 10]));
+    t "map_1935_nested" (`Map (Map.Poly.of_alist_exn
+                         [`Keyword "f", hash_of_size 1935;
+                          `Keyword "s", hash_of_size 1935]));
+    t "map_1936_nested" (`Map (Map.Poly.of_alist_exn
+                         [`Keyword "f", hash_of_size 1936;
+                          `Keyword "s", hash_of_size 1936]));
+    t "map_1937_nested" (`Map (Map.Poly.of_alist_exn
+                         [`Keyword "f", hash_of_size 1937;
+                          `Keyword "s", hash_of_size 1937]));
     t "map_mixed" map_mixed;
     t "map_nested" map_nested;
     t "map_numeric_keys" (`Map (Map.Poly.of_alist_exn
@@ -186,7 +194,7 @@ let exemplar_tests t =
     t "map_vector_keys" (`Map (Map.Poly.of_alist_exn
                                  [`Array [one; one], `String "one";
                                   `Array [two; two], `String "two"]));
-    t "map_unrecognized_keys" `Null;
+    t "maps_unrecognized_keys" `Null;
     t "map_unrecognized_vals" (`Map (Map.Poly.of_alist_exn
                                        [`Keyword "key", `String "~Unrecognized"]));
     t "maps_four_char_string_keys"
@@ -219,9 +227,8 @@ let exemplar_tests t =
           `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 1; `Keyword "bb", i 2]);
           `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 3; `Keyword "bb", i 4]);
           `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 5; `Keyword "bb", i 6])]);
-    t "map_vector_keys" `Null;
     t "nil" `Null;
-    t "one_date" (`Date (from_timestamp 946728000.0)); 
+    t "one_date" (`Time (from_timestamp 946728000.0)); 
     t "one" (`Int (Int64.of_int 1));
     t "one_keyword" (`Keyword "hello");
     t "one_string" (`String "hello");
