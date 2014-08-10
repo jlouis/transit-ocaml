@@ -216,7 +216,13 @@ module Parser = struct
        | "f" -> `Bool false
        | _ -> raise (Parse_error "decode_tagged ? case"))
     | 'i' -> `Int (Int64.of_string s)
-    | 'n' -> `BigInt (Big_int.big_int_of_string s)
+    | 'n' ->
+      let i = Big_int.big_int_of_string s
+      in
+      (try
+         `Int (Big_int.int64_of_big_int i)
+       with nativeint_of_big_int ->
+         `BigInt i)
     | 'd' -> `Float (Float.of_string s)
     | 'u' -> (`UUID (Uuid.of_string s))
     | 'r' -> (`URI s)

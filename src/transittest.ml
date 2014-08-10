@@ -100,19 +100,19 @@ let big_interesting_ints =
   List.map big_powers_of_two ~f:(fun x -> big_ints_centered_on two x)
   |> List.concat
 
-let breakoff_1 =
-  Big_int.power_int_positive_int 2 53
-
-let breakoff_2 =
-  Big_int.power_int_positive_int 2 63
-
+let best_repr x =
+  try
+    `Int (Big_int.int64_of_big_int x)
+  with nativeint_of_big_int ->
+    `BigInt x
+  
 let interesting_ints =
-  let repr x = 
-    if Big_int.lt_big_int x breakoff_1 then `Int (Big_int.int64_of_big_int x)
-    else if Big_int.lt_big_int x breakoff_2 then `Int (Big_int.int64_of_big_int x)
-    else `BigInt x
-    in
-    List.map big_interesting_ints ~f:repr
+    List.map big_interesting_ints ~f:best_repr
+
+let neg_interesting_ints =
+    List.map
+      (List.map big_interesting_ints ~f:(fun x -> Big_int.minus_big_int x))
+      ~f:best_repr
 
 let doublify ints =
   let floats = List.map ints ~f:(fun (`Int x) -> `Float (Int64.to_float x )) in
@@ -126,7 +126,6 @@ let sym_strs = ["a"; "ab"; "abc"; "abcd"; "abcde"; "a1"; "b2"; "c3"; "a_b"]
 let symbols = List.map sym_strs ~f:(fun x -> `Symbol x)
 let keywords = List.map sym_strs ~f:(fun x -> `Keyword x)
 
-
 let one = `Int (Int64.of_int 1)
 let two = `Int (Int64.of_int 2)
 
@@ -137,98 +136,106 @@ let exemplar t expected =
 
 let t n expected = n >:: (fun(_) -> exemplar n expected)
 
+let read_json t =
+  let fname = String.concat ["../transit-format/examples/0.8/simple/"; t; ".json"] in
+  let d = In_channel.read_all fname in
+  Transit.from_string d
+
 let tests = "Transit" >::: [
     "dummy" >::
     (fun (_) -> assert_equal ~printer:Sexp.to_string (String.sexp_of_t "this") (String.sexp_of_t "this"));
-    t "nil" `Null;
-    t "true" (`Bool true);
-    t "false" (`Bool false);
-    t "zero" (`Int (Int64.of_int 0));
-    t "one" (`Int (Int64.of_int 1));
-    t "one_string" (`String "hello");
-    t "one_keyword" (`Keyword "hello");
-    t "one_symbol" (`Symbol "hello");
-    t "one_date" (`Date (from_timestamp 946728000.0)); 
-    t "vector_simple" (`Array simple);
-    t "vector_empty" (`Array []);
-    t "vector_mixed" (`Array mixed);
-    t "vector_nested" array_nested;
-    t "small_strings" small_strings;
-    t "strings_tilde" (add_string "~" small_strings);
-    t "strings_hash" (add_string "#" small_strings);
-    t "strings_hat" (add_string "^" small_strings);
-    t "ints" (`Array (List.map (List.range 0 128) ~f:(fun (i) -> `Int (Int64.of_int i))) );
-    t "small_ints" (`Array (ints_centered_on 0));
-    t "ints_interesting" (`Array interesting_ints);
-    (* t "ints_interesting_neg" (`Array interesting_ints); *)
-    t "doubles_small" (ints_centered_on 0 |> doublify);
-    t "doubles_interesting" (`Array [fl (-3.14159); fl 3.14159; fl 4E11; fl 2.998E8; fl 6.626E-34]);
-    t "one_uuid" (List.hd_exn uuids);
-    t "uuids" (`Array uuids);
-    t "one_uri" (List.hd_exn uris);
-    t "uris" (`Array uris);
+    "large" >::
+      (fun (_) ->
+        let fname = "../transit-format/examples/0.8/example.json" in
+        let d = In_channel.read_all fname in
+        let decoded = Transit.from_string d in
+        assert_equal true true );
     t "dates_interesting" (`Array dates);
-    t "symbols" (`Array symbols);
+    t "doubles_interesting" (`Array [fl (-3.14159); fl 3.14159; fl 4E11; fl 2.998E8; fl 6.626E-34]);
+    t "doubles_small" (ints_centered_on 0 |> doublify);
+    t "false" (`Bool false);
+    t "ints" (`Array (List.map (List.range 0 128) ~f:(fun (i) -> `Int (Int64.of_int i))) );
+    t "ints_interesting" (`Array interesting_ints);
+    t "ints_interesting_neg" (`Array neg_interesting_ints);
     t "keywords" (`Array keywords);
-    t "list_simple" (`List simple);
     t "list_empty" (`List []);
     t "list_mixed" (`List mixed);
     t "list_nested" list_nested;
-    t "set_simple" (`Set (Set.Poly.of_list simple));
-    t "set_empty" (`Set Set.Poly.empty);
-    t "set_mixed" (`Set (Set.Poly.of_list mixed));
-    t "set_nested" set_nested;
-    t "map_simple" map_simple;
+    t "list_simple" (`List simple);
+    t "map_10_items" (hash_of_size 10);
     t "map_mixed" map_mixed;
     t "map_nested" map_nested;
+    t "map_numeric_keys" (`Map (Map.Poly.of_alist_exn
+                                  [`Int (Int64.of_int 1), `String "one";
+                                   `Int (Int64.of_int 2), `String "two"]));
+    t "map_simple" map_simple;
     t "map_string_keys" (`Map (Map.Poly.of_alist_exn
                                  [`String "first", `Int (Int64.of_int 1);
                                   `String "second", `Int (Int64.of_int 2);
                                   `String "third", `Int (Int64.of_int 3)]));
-    t "map_numeric_keys" (`Map (Map.Poly.of_alist_exn
-                                  [`Int (Int64.of_int 1), `String "one";
-                                   `Int (Int64.of_int 2), `String "two"]));
     t "map_vector_keys" (`Map (Map.Poly.of_alist_exn
                                  [`Array [one; one], `String "one";
                                   `Array [two; two], `String "two"]));
     t "map_unrecognized_vals" (`Map (Map.Poly.of_alist_exn
                                        [`Keyword "key", `String "~Unrecognized"]));
-    t "vector_unrecognized_vals" (`Array [`String "~Unrecognized"]);
-    t "vector_1935_keywords_repeated_twice" (`Array (array_of_symbools 1935 (1935*2)));
-    t "vector_1936_keywords_repeated_twice" (`Array (array_of_symbools 1936 (1936*2)));
-    t "vector_1937_keywords_repeated_twice" (`Array (array_of_symbools 1937 (1937*2)));
-    t "map_10_items" (hash_of_size 10);
-
-    t "maps_two_char_sym_keys"
-      (`Array [
-          `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 1; `Keyword "bb", i 2]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 3; `Keyword "bb", i 4]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 5; `Keyword "bb", i 6])]);
-    t "maps_three_char_sym_keys"
-      (`Array [
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 1; `Keyword "bbb", i 2]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 3; `Keyword "bbb", i 4]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 5; `Keyword "bbb", i 6])]);
-    t "maps_four_char_sym_keys"
-      (`Array [
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 1; `Keyword "bbbb", i 2]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 3; `Keyword "bbbb", i 4]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 5; `Keyword "bbbb", i 6])]);
-
-    t "maps_two_char_string_keys"
-      (`Array [
-          `Map (Map.Poly.of_alist_exn [`String "aa", i 1; `String "bb", i 2]);
-          `Map (Map.Poly.of_alist_exn [`String "aa", i 3; `String "bb", i 4]);
-          `Map (Map.Poly.of_alist_exn [`String "aa", i 5; `String "bb", i 6])]);
-    t "maps_three_char_string_keys"
-      (`Array [
-          `Map (Map.Poly.of_alist_exn [`String "aaa", i 1; `String "bbb", i 2]);
-          `Map (Map.Poly.of_alist_exn [`String "aaa", i 3; `String "bbb", i 4]);
-          `Map (Map.Poly.of_alist_exn [`String "aaa", i 5; `String "bbb", i 6])]);
     t "maps_four_char_string_keys"
         (`Array [
           `Map (Map.Poly.of_alist_exn [`String "aaaa", i 1; `String "bbbb", i 2]);
           `Map (Map.Poly.of_alist_exn [`String "aaaa", i 3; `String "bbbb", i 4]);
           `Map (Map.Poly.of_alist_exn [`String "aaaa", i 5; `String "bbbb", i 6])]);
-
+    t "maps_three_char_string_keys"
+      (`Array [
+          `Map (Map.Poly.of_alist_exn [`String "aaa", i 1; `String "bbb", i 2]);
+          `Map (Map.Poly.of_alist_exn [`String "aaa", i 3; `String "bbb", i 4]);
+          `Map (Map.Poly.of_alist_exn [`String "aaa", i 5; `String "bbb", i 6])]);
+    t "maps_two_char_string_keys"
+      (`Array [
+          `Map (Map.Poly.of_alist_exn [`String "aa", i 1; `String "bb", i 2]);
+          `Map (Map.Poly.of_alist_exn [`String "aa", i 3; `String "bb", i 4]);
+          `Map (Map.Poly.of_alist_exn [`String "aa", i 5; `String "bb", i 6])]);
+    t "maps_four_char_sym_keys"
+      (`Array [
+          `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 1; `Keyword "bbbb", i 2]);
+          `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 3; `Keyword "bbbb", i 4]);
+          `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 5; `Keyword "bbbb", i 6])]);
+    t "maps_three_char_sym_keys"
+      (`Array [
+          `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 1; `Keyword "bbb", i 2]);
+          `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 3; `Keyword "bbb", i 4]);
+          `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 5; `Keyword "bbb", i 6])]);
+    t "maps_two_char_sym_keys"
+      (`Array [
+          `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 1; `Keyword "bb", i 2]);
+          `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 3; `Keyword "bb", i 4]);
+          `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 5; `Keyword "bb", i 6])]);
+    t "nil" `Null;
+    t "one_date" (`Date (from_timestamp 946728000.0)); 
+    t "one" (`Int (Int64.of_int 1));
+    t "one_keyword" (`Keyword "hello");
+    t "one_string" (`String "hello");
+    t "one_symbol" (`Symbol "hello");
+    t "one_uri" (List.hd_exn uris);
+    t "one_uuid" (List.hd_exn uuids);
+    t "set_empty" (`Set Set.Poly.empty);
+    t "set_mixed" (`Set (Set.Poly.of_list mixed));
+    t "set_nested" set_nested;
+    t "set_simple" (`Set (Set.Poly.of_list simple));
+    t "small_ints" (`Array (ints_centered_on 0));
+    t "small_strings" small_strings;
+    t "strings_hash" (add_string "#" small_strings);
+    t "strings_hat" (add_string "^" small_strings);
+    t "strings_tilde" (add_string "~" small_strings);
+    t "symbols" (`Array symbols);
+    t "true" (`Bool true);
+    t "uris" (`Array uris);
+    t "uuids" (`Array uuids);
+    t "vector_1935_keywords_repeated_twice" (`Array (array_of_symbools 1935 (1935*2)));
+    t "vector_1936_keywords_repeated_twice" (`Array (array_of_symbools 1936 (1936*2)));
+    t "vector_1937_keywords_repeated_twice" (`Array (array_of_symbools 1937 (1937*2)));
+    t "vector_empty" (`Array []);
+    t "vector_mixed" (`Array mixed);
+    t "vector_nested" array_nested;
+    t "vector_simple" (`Array simple);
+    t "vector_unrecognized_vals" (`Array [`String "~Unrecognized"]);
+    t "zero" (`Int (Int64.of_int 0));
   ]
