@@ -27,6 +27,7 @@ module T = struct
       | `Int of Int64.t
       | `BigInt of Big_int.big_int
       | `Float of Float.t
+      | `Bytes of string
       | `Array of t list
       | `Map of (t, t) Map.Poly.t
       | `UUID of Uuid.t
@@ -224,6 +225,7 @@ module Parser = struct
        with nativeint_of_big_int ->
          `BigInt i)
     | 'd' -> `Float (Float.of_string s)
+    | 'b' -> `Bytes (Base64.decode_string s)
     | 'u' -> (`UUID (Uuid.of_string s))
     | 'r' -> (`URI s)
     | ':' -> (`Keyword s)

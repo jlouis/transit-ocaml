@@ -7,6 +7,7 @@ type t =
     | `Int of Int64.t
     | `BigInt of Big_int.big_int
     | `Float of Float.t
+    | `Bytes of string
     | `Array of t list
     | `Map of (t, t) Map.Poly.t
     | `Keyword of string
