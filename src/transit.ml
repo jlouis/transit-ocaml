@@ -146,11 +146,15 @@ module Parser = struct
     (* For convenience *)
     let to_string (Ctx (_, x)) = sexp_of_context x |> Sexp.to_string
 
-	let track_transit (Ctx (cache, ctx)) x =
-	    Ctx (Cache.track_transit cache x, ctx)
+	let track_transit (Ctx (cache, ctx)) s x =
+	   if String.length s > 3
+	   then Ctx (Cache.track_transit cache x, ctx)
+	   else Ctx (cache, ctx)
 
-    let track_tag (Ctx (cache, ctx)) x =
-        Ctx (Cache.track_tag cache x, ctx)
+    let track_tag (Ctx (cache, ctx)) s x =
+	   if String.length s > 3
+	   then Ctx (Cache.track_tag cache x, ctx)
+	   else Ctx (cache, ctx)
 
     (* Push the element "e" onto the Context, depending on what it looks like. Essentially it "does the right thing™"  *)
     let rec add ((Ctx (cache, ctx)) as cx) e =
@@ -257,10 +261,7 @@ module Parser = struct
 
   (* Decode and check if the string is cacheable *)
   let decode_string s ctx head =
-    let track s x =
-      if String.length s > 3
-      then Context.add (Context.track_transit ctx x) x
-      else Context.add ctx x in
+    let track x = Context.add (Context.track_transit ctx s x) x in
     match head with
     | ('^', ' ') -> Context.push_map_as_array ctx
     | ('^', _) -> Context.cache_lookup ctx (String.drop_prefix s 1)
@@ -268,16 +269,11 @@ module Parser = struct
     | ('~', '^') -> `String (String.drop_prefix s 1) |> Context.add ctx
     | ('~', '#') ->
       let array_tag = Context.tag_of_string s in
-      let ctx' =
-        if String.length s > 3
-        then Context.track_tag ctx array_tag
-        else ctx
-      in
-      Context.push_tagged ctx' array_tag
+      Context.push_tagged (Context.track_tag ctx s array_tag) array_tag
     | ('~', t) ->
        (match decode_tagged (String.drop_prefix s 2) t with
-       | `Symbol s -> track s (`Symbol s)
-       | `Keyword k -> track s (`Keyword k)
+       | `Symbol sy -> track (`Symbol sy)
+       | `Keyword k -> track (`Keyword k)
        | value -> Context.add ctx value)
     | _ -> Context.add ctx (`String s)
 
