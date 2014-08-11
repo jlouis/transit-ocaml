@@ -35,9 +35,9 @@ module T = struct
       | `Symbol of String.t
       | `Time of Time.t
       | `URI of String.t
-      | `Tagged of char * t
       | `List of t list
-      | `Set of t Set.Poly.t ] with sexp, compare
+      | `Set of t Set.Poly.t
+      | `Extension of string * t ] with sexp, compare
 end
 
 (* Cache codes in transit follow a radix 44 encoding. Transform these into integers
@@ -90,7 +90,7 @@ module Parser = struct
       | "~#list" -> List
       | "~#set" -> Set
       | "~#cmap" -> CMap
-      | s -> Unknown s
+      | s -> Unknown (String.drop_prefix s 2)
 
     (* Implementation via a map over integers *)
     module Transit_cache = struct
@@ -143,13 +143,10 @@ module Parser = struct
       | Focused v -> v
       | _ -> raise Internal_error
 
-    (* For convenience *)
-    let to_string (_, x) = sexp_of_context x |> Sexp.to_string
-
-	let track_transit (cache, ctx) s x =
-	   if String.length s > 3
-	   then (Cache.track_transit cache x, ctx)
-	   else (cache, ctx)
+      let track_transit (cache, ctx) s x =
+        if String.length s > 3
+        then (Cache.track_transit cache x, ctx)
+        else (cache, ctx)
 
     let track_tag (cache, ctx) s x =
 	   if String.length s > 3
@@ -157,14 +154,14 @@ module Parser = struct
 	   else (cache, ctx)
 
     (* Push the element "e" onto the Context, depending on what it looks like. Essentially it "does the right thing™"  *)
-    let rec add ((cache, ctx) as cx) e =
+    let rec add (cache, ctx) e =
       match ctx with
       | Empty -> (cache, Focused e)
       | Focused _ -> raise Internal_error
       | Array (es, ctx) -> (cache, Array (e :: es, ctx))
-      | Tagged (t, tctx) ->
-          let (cache', tctx') = add (cache, tctx) e in
-          (cache, Tagged (t, tctx'))
+      | Tagged (t, inner) ->
+          let (cache', inner') = add (cache, inner) e in
+          (cache', Tagged (t, inner'))
       | MapKey (es, ctx) ->
           (match e with
            | `String s when String.length s > 3 ->
@@ -183,7 +180,7 @@ module Parser = struct
     
     let push_tagged (cache, ctx) t =
      match ctx with
-     | Array ([], parent) as cx -> (cache, Tagged (t, cx))
+     | Array ([], _) as cx -> (cache, Tagged (t, cx))
      | MapKey ([], parent) -> (cache, Tagged (t, MapValue (`Null, [], parent)))
      | _ -> raise (Parse_error "Array tag, but not parsing an array")
 
@@ -200,6 +197,10 @@ module Parser = struct
       | Tagged (List, MapKey ([_, `Array res], parent)) -> add (cache, parent) (`List res)
       | Tagged (CMap, MapKey ([_, `Array res], parent)) ->
            add (cache, parent) (`Map (Map.Poly.of_alist_exn (pairup res)))
+      | Tagged (Unknown t, MapKey ([_, res], parent)) -> add (cache, parent) (`Extension (t, res))
+      | Tagged (_, _) -> raise Internal_error
+      | MapValue (_, _, _) -> raise (Parse_error "end_of_map called with an “free” key")
+      | Array (_, _) -> raise (Parse_error "end_of_map in array context")
       | Empty -> raise (Parse_error "end_of_map called in empty context")
       | Focused _ -> raise (Parse_error "end_of_map called in focused context")
 
@@ -214,6 +215,8 @@ module Parser = struct
        | Tagged (Quote, Array (_, _)) -> raise (Parse_error "Quote with multi-elem array")
        | Tagged (CMap, Array ([`Array res], parent)) ->
            add (cache, parent) (`Map (Map.Poly.of_alist_exn (pairup res)))
+       | Tagged (Unknown t, Array ([res], parent)) -> add (cache, parent) (`Extension (t, res))
+       | Tagged (_, _) -> raise Internal_error
        | MapValue (_, _, _) -> raise (Parse_error "Odd number of k/v pairs in map-as-array/cmap")
        | MapKey (res, parent) -> add (cache, parent) (`Map (Map.Poly.of_alist_exn res))
        | Empty -> raise (Parse_error "end_of_array called in Empty context")
@@ -240,7 +243,7 @@ module Parser = struct
       in
       (try
          `Int (Big_int.int64_of_big_int i)
-       with nativeint_of_big_int ->
+       with Failure "nativeint_of_big_int" ->
          `BigInt i)
     | 'd' -> `Float (Float.of_string s)
     | 'b' -> `Bytes (Base64.decode_string s)
@@ -254,7 +257,7 @@ module Parser = struct
     | 't' ->
       let tp = Time.of_string s in
       `Time tp
-    | t -> `Tagged (t, `String s)
+    | t -> `Extension (String.of_char t, `String s)
 
 
   (* Decode and check if the string is cacheable *)
@@ -282,13 +285,7 @@ module Parser = struct
   let on_float ctx f = Context.add ctx (`Float f)
 
   let on_string ctx buf offset len =
-    let str = String.sub buf offset len in
-    match String.length str with
-    | 0 | 1 -> Context.add ctx (`String str)
-    | _ -> decode_string str ctx (str.[0], str.[1])
-
-  let on_map_key ctx buf offset len =
-    let str = String.sub buf offset len in
+    let str = String.sub buf ~pos:offset ~len:len in
     match String.length str with
     | 0 | 1 -> Context.add ctx (`String str)
     | _ -> decode_string str ctx (str.[0], str.[1])
@@ -300,7 +297,7 @@ module Parser = struct
       on_number = `Parse_numbers ((`Int64 on_int), on_float);
       on_string = on_string;
       on_start_map = Context.push_map;
-      on_map_key = on_map_key;
+      on_map_key = on_string;
       on_end_map = Context.pop_map;
       on_start_array = Context.push_array;
       on_end_array = Context.pop_array;

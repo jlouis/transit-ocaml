@@ -194,7 +194,9 @@ let exemplar_tests t =
     t "map_vector_keys" (`Map (Map.Poly.of_alist_exn
                                  [`Array [one; one], `String "one";
                                   `Array [two; two], `String "two"]));
-    t "maps_unrecognized_keys" `Null;
+    t "maps_unrecognized_keys" (`Array [
+        `Extension ("abcde", `Keyword "anything");
+        `Extension ("fghij", `Keyword "anything-else")]);
     t "map_unrecognized_vals" (`Map (Map.Poly.of_alist_exn
                                        [`Keyword "key", `String "~Unrecognized"]));
     t "maps_four_char_string_keys"
