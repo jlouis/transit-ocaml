@@ -135,56 +135,56 @@ module Parser = struct
       | Tagged of tag * context
     with sexp
 
-    type t = Ctx of Cache.t * context
+    type t = Cache.t * context
 
-    let empty = Ctx (Cache.empty, Empty)
-    let result (Ctx (_, ctx)) =
+    let empty = (Cache.empty, Empty)
+    let result (_, ctx) =
       match ctx with
       | Focused v -> v
       | _ -> raise Internal_error
 
     (* For convenience *)
-    let to_string (Ctx (_, x)) = sexp_of_context x |> Sexp.to_string
+    let to_string (_, x) = sexp_of_context x |> Sexp.to_string
 
-	let track_transit (Ctx (cache, ctx)) s x =
+	let track_transit (cache, ctx) s x =
 	   if String.length s > 3
-	   then Ctx (Cache.track_transit cache x, ctx)
-	   else Ctx (cache, ctx)
+	   then (Cache.track_transit cache x, ctx)
+	   else (cache, ctx)
 
-    let track_tag (Ctx (cache, ctx)) s x =
+    let track_tag (cache, ctx) s x =
 	   if String.length s > 3
-	   then Ctx (Cache.track_tag cache x, ctx)
-	   else Ctx (cache, ctx)
+	   then (Cache.track_tag cache x, ctx)
+	   else (cache, ctx)
 
     (* Push the element "e" onto the Context, depending on what it looks like. Essentially it "does the right thing™"  *)
-    let rec add ((Ctx (cache, ctx)) as cx) e =
+    let rec add ((cache, ctx) as cx) e =
       match ctx with
-      | Empty -> Ctx (cache, Focused e)
+      | Empty -> (cache, Focused e)
       | Focused _ -> raise Internal_error
-      | Array (es, ctx) -> Ctx (cache, Array (e :: es, ctx))
+      | Array (es, ctx) -> (cache, Array (e :: es, ctx))
       | Tagged (t, tctx) ->
-          let Ctx (cache', tctx') = add (Ctx (cache, tctx)) e in
-          Ctx (cache, Tagged (t, tctx'))
+          let (cache', tctx') = add (cache, tctx) e in
+          (cache, Tagged (t, tctx'))
       | MapKey (es, ctx) ->
           (match e with
            | `String s when String.length s > 3 ->
-               Ctx (Cache.track_transit cache e, MapValue (e, es, ctx))
+               (Cache.track_transit cache e, MapValue (e, es, ctx))
            | _ ->
-               Ctx (cache, MapValue (e, es, ctx)) )
-      | MapValue (k, es, ctx) -> Ctx (cache, MapKey ((k, e) :: es, ctx))
+               (cache, MapValue (e, es, ctx)) )
+      | MapValue (k, es, ctx) -> (cache, MapKey ((k, e) :: es, ctx))
     
-    let push_map_as_array (Ctx (cache, ctx)) =
+    let push_map_as_array (cache, ctx) =
       match ctx with
-      | Array ([], parent) -> Ctx (cache, MapKey ([], parent))
+      | Array ([], parent) -> (cache, MapKey ([], parent))
       | _ -> raise (Parse_error "Map-as-array marker in wrong location!")
 
-    let push_array (Ctx (cache, ctx)) = Ctx (cache, Array ([], ctx))
-    let push_map (Ctx (cache, ctx)) = Ctx (cache, MapKey ([], ctx))
+    let push_array (cache, ctx) = (cache, Array ([], ctx))
+    let push_map (cache, ctx) = (cache, MapKey ([], ctx))
     
-    let push_tagged (Ctx (cache, ctx)) t =
+    let push_tagged (cache, ctx) t =
      match ctx with
-     | Array ([], parent) as cx -> Ctx (cache, Tagged (t, cx))
-     | MapKey ([], parent) -> Ctx (cache, Tagged (t, MapValue (`Null, [], parent)))
+     | Array ([], parent) as cx -> (cache, Tagged (t, cx))
+     | MapKey ([], parent) -> (cache, Tagged (t, MapValue (`Null, [], parent)))
      | _ -> raise (Parse_error "Array tag, but not parsing an array")
 
     let rec pairup = function
@@ -192,36 +192,34 @@ module Parser = struct
       | k :: v :: rest -> (k, v) :: (pairup rest)
       | _ -> raise (Parse_error "Odd number of pairs")
 
-    exception Todo
-    let pop_map (Ctx (cache, ctx)) =
+    let pop_map (cache, ctx) =
       match ctx with
-      | MapKey (res, parent) -> add (Ctx (cache, parent)) (`Map (Map.Poly.of_alist_exn res))
-      | Tagged (Quote, MapKey ([_, res], parent)) -> add (Ctx (cache, parent)) res
-      | Tagged (Set, MapKey ([_, `Array res], parent)) -> add (Ctx (cache, parent)) (`Set (Set.Poly.of_list res))
-      | Tagged (List, MapKey ([_, `Array res], parent)) -> add (Ctx (cache, parent)) (`List res)
+      | MapKey (res, parent) -> add (cache, parent) (`Map (Map.Poly.of_alist_exn res))
+      | Tagged (Quote, MapKey ([_, res], parent)) -> add (cache, parent) res
+      | Tagged (Set, MapKey ([_, `Array res], parent)) -> add (cache, parent) (`Set (Set.Poly.of_list res))
+      | Tagged (List, MapKey ([_, `Array res], parent)) -> add (cache, parent) (`List res)
       | Tagged (CMap, MapKey ([_, `Array res], parent)) ->
-           add (Ctx (cache, parent)) (`Map (Map.Poly.of_alist_exn (pairup res)))
+           add (cache, parent) (`Map (Map.Poly.of_alist_exn (pairup res)))
       | Empty -> raise (Parse_error "end_of_map called in empty context")
       | Focused _ -> raise (Parse_error "end_of_map called in focused context")
 
-    let pop_array (Ctx (cache, ctx)) =
+    let pop_array (cache, ctx) =
        match ctx with
-       | Array (res, parent) -> add (Ctx (cache, parent)) (`Array (List.rev res))
-       | Tagged (List, Array ([`Array res], parent)) -> add (Ctx (cache, parent)) (`List res)
+       | Array (res, parent) -> add (cache, parent) (`Array (List.rev res))
+       | Tagged (List, Array ([`Array res], parent)) -> add (cache, parent) (`List res)
        | Tagged (List, Array ( _, _)) -> raise (Parse_error "Wrong ~#list encoding")
-       | Tagged (Set, Array ([`Array res], parent)) ->
-           add (Ctx (cache, parent)) (`Set (Set.Poly.of_list res))
+       | Tagged (Set, Array ([`Array res], parent)) -> add (cache, parent) (`Set (Set.Poly.of_list res))
        | Tagged (Set, Array ( _, _)) -> raise (Parse_error "Wrong ~#set encoding")
-       | Tagged (Quote, Array ([res], parent)) -> add (Ctx (cache, parent)) res
+       | Tagged (Quote, Array ([res], parent)) -> add (cache, parent) res
        | Tagged (Quote, Array (_, _)) -> raise (Parse_error "Quote with multi-elem array")
        | Tagged (CMap, Array ([`Array res], parent)) ->
-           add (Ctx (cache, parent)) (`Map (Map.Poly.of_alist_exn (pairup res)))
+           add (cache, parent) (`Map (Map.Poly.of_alist_exn (pairup res)))
        | MapValue (_, _, _) -> raise (Parse_error "Odd number of k/v pairs in map-as-array/cmap")
-       | MapKey (res, parent) -> add (Ctx (cache, parent)) (`Map (Map.Poly.of_alist_exn res))
+       | MapKey (res, parent) -> add (cache, parent) (`Map (Map.Poly.of_alist_exn res))
        | Empty -> raise (Parse_error "end_of_array called in Empty context")
        | Focused _ -> raise (Parse_error "end_of_array called in Focused context")
 
-    let cache_lookup ( (Ctx (cache, _)) as cx ) s =
+    let cache_lookup ( (cache, _) as cx ) s =
       match CacheCode.to_int s |> Cache.find_exn cache with
       | Cache.ETransit x -> add cx x
       | Cache.ETag t -> push_tagged cx t
