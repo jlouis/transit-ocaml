@@ -314,28 +314,56 @@ module Writer = struct
     exception Todo
 
     let string gen = YAJL.gen_string gen
+    let string_track gen = YAJL.gen_string gen
     let null = YAJL.gen_null
     let bool = YAJL.gen_bool
+    let int = YAJL.gen_int64
+    let float = YAJL.gen_float
     let start_array = YAJL.gen_start_array
     let end_array = YAJL.gen_end_array
     
-    let rec quote gen x =
+    let rec array_tagged gen tag x =
+      start_array gen;
+      string_track gen tag;
+      write_json gen x;
+      end_array gen
+    and write_json gen x =
+      match x with
+      | `Null -> null gen
+      | `Bool b -> bool gen b
+      | `String "" -> string gen ""
+      | `String s ->
+        (match s.[0] with
+         | '~' -> string gen ("~" ^ s)
+         | '^' -> string gen ("~" ^ s)
+         | _ -> string gen s)
+      | `Keyword k -> string_track gen ("~:" ^ k)
+      | `Symbol symb -> string_track gen ("~$" ^ symb)
+      | `UUID uuid -> string gen ("~u" ^ Uuid.to_string uuid)
+      | `URI s -> string gen ("~r" ^ s)
+      | `Float f -> float gen f
+      | `Array ts ->
+          begin
+            start_array gen;
+            List.iter ts ~f:(fun x -> write_json gen x);
+            end_array gen;
+          end
+      | `List ts -> array_tagged gen "~#list" (`Array ts)
+      | `Set s -> array_tagged gen "~#set" (`Array (Set.Poly.to_list s))
+      | _ -> raise Todo
+    
+    let quote gen x =
        start_array gen;
        string gen "~#'";
        write_json gen x;
        end_array gen
     
-    and write_json gen x =
-      match x with
-      | `Null -> null gen
-      | `Bool b -> bool gen b
-      | `String s -> string gen s
-    
-    and write_json_toplevel gen = function
+    let write_json_toplevel gen = function
       | `Null -> quote gen `Null
       | `Bool b -> quote gen (`Bool b)
       | `String s -> quote gen (`String s)
-      | _ -> raise Todo
+      | `Float f -> quote gen (`Float f)
+      | x -> write_json gen x
 
     let to_string x =
       let gen = YAJL.make_gen () in
