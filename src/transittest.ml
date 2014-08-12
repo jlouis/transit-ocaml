@@ -124,7 +124,7 @@ let keywords = List.map sym_strs ~f:(fun x -> `Keyword x)
 let one = `Int (Int64.of_int 1)
 let two = `Int (Int64.of_int 2)
 
-type test_type = JSON | JSON_Verbose
+type test_type = JSON | JSON_Verbose | JSON_Write
 
 let read ext t =
   let fname = String.concat ["../transit-format/examples/0.8/simple/"; t; "."; ext] in
@@ -132,13 +132,14 @@ let read ext t =
   Transit.from_string d
 
 let exemplar ty t expected =
-  let real = match ty with
-             | JSON -> read "json" t
-             | JSON_Verbose -> read "verbose.json" t
-  in
-  assert_equal ~printer:Sexp.to_string
-    (Transit.sexp_of_t expected) (Transit.sexp_of_t real)
-
+  let test x = assert_equal ~printer:Sexp.to_string (Transit.sexp_of_t expected) (Transit.sexp_of_t x) in
+  match ty with
+  | JSON -> read "json" t |> test
+  | JSON_Verbose -> read "verbose.json" t |> test
+  | JSON_Write ->
+      let string_rep = Transit.to_string expected in
+      let x = Transit.from_string string_rep in
+      test x
 
 let t ty n expected = n >:: (fun(_) -> exemplar ty n expected)
 
@@ -263,11 +264,13 @@ let exemplar_tests t =
 
 let exemplar_tests_json = exemplar_tests (t JSON)
 let exemplar_tests_json_verbose = exemplar_tests (t JSON_Verbose)
+let exemplar_tests_json_write = exemplar_tests (t JSON_Write)
 
 let tests =
    "Transit" >::: [
        "JSON" >::: exemplar_tests_json;
        "Example" >::: example_tests;
        "JSON_Verbose" >::: exemplar_tests_json_verbose;
+       "JSON_Write" >::: exemplar_tests_json_write;
    ]
 

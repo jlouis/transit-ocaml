@@ -62,7 +62,7 @@ module CacheCode = struct
 end
 
 (* Code for parsing transit structures *)
-module Parser = struct
+module Reader = struct
 
   (* Used for internal errors in the parser that should never happen
    * Internal_errors means the parser is wrong in its assumptions somewhere
@@ -310,8 +310,46 @@ module Parser = struct
   end
 end
 
+module Writer = struct
+    exception Todo
+
+    let string gen = YAJL.gen_string gen
+    let null = YAJL.gen_null
+    let bool = YAJL.gen_bool
+    let start_array = YAJL.gen_start_array
+    let end_array = YAJL.gen_end_array
+    
+    let rec quote gen x =
+       start_array gen;
+       string gen "~#'";
+       write_json gen x;
+       end_array gen
+    
+    and write_json gen x =
+      match x with
+      | `Null -> null gen
+      | `Bool b -> bool gen b
+      | `String s -> string gen s
+    
+    and write_json_toplevel gen = function
+      | `Null -> quote gen `Null
+      | `Bool b -> quote gen (`Bool b)
+      | `String s -> quote gen (`String s)
+      | _ -> raise Todo
+
+    let to_string x =
+      let gen = YAJL.make_gen () in
+      let () = write_json_toplevel gen x in
+      let (buf, pos, len) = YAJL.gen_get_buf gen in
+      let res = String.sub buf ~pos ~len in
+      YAJL.gen_clear gen;
+      res
+      
+end
 type t = T.t
-let from_string = Parser.JSON.from_string
+let from_string = Reader.JSON.from_string
+let to_string = Writer.to_string
+
 
 let sexp_of_t = T.sexp_of_t
 let t_of_sexp = T.t_of_sexp
