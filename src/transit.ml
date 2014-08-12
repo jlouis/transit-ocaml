@@ -4,7 +4,7 @@ open Core.Std
 module Big_int = struct
   include Big_int
   exception Error
-  
+
   let sexp_of_big_int x = Sexp.Atom (Big_int.string_of_big_int x)
   let big_int_of_sexp sexp =
     match sexp with
@@ -58,6 +58,14 @@ module CacheCode = struct
       ((Char.to_int s.[0]) - base_char_index) * cache_code_digits +
       ((Char.to_int s.[1]) - base_char_index)
     | _ -> raise (Invalid_cache_code s)
+
+  let of_int i =
+    let hi = i / cache_code_digits in
+    let lo = i % cache_code_digits in
+    if hi = 0
+    then "^" ^ String.of_char (Char.of_int_exn (lo + base_char_index))
+    else "^" ^ String.of_char (Char.of_int_exn (hi + base_char_index))
+             ^ String.of_char (Char.of_int_exn (lo + base_char_index))
 
 end
 
@@ -313,20 +321,43 @@ end
 module Writer = struct
     exception Todo
 
+    let int_53_bit_upper = Int64.of_int 9007199254740992
+    let int_53_bit_lower = Int64.of_int (-9007199254740992)
+
     let string gen = YAJL.gen_string gen
     let string_track gen = YAJL.gen_string gen
+    let int = YAJL.gen_int64
     let null = YAJL.gen_null
     let bool = YAJL.gen_bool
-    let int = YAJL.gen_int64
     let float = YAJL.gen_float
     let start_array = YAJL.gen_start_array
     let end_array = YAJL.gen_end_array
-    
+
+    let is_composite_map m = false
+
     let rec array_tagged gen tag x =
       start_array gen;
       string_track gen tag;
       write_json gen x;
       end_array gen
+    and composite_map gen m =
+      let f ~key ~data =
+        write_json gen key;
+        write_json gen data
+      in
+        start_array gen;
+        string gen "~#cmap";
+        Map.Poly.iter m ~f;
+        end_array gen
+    and simple_map gen m =
+      let f ~key ~data =
+          write_json gen key;
+          write_json gen data
+      in
+        start_array gen;
+        string gen "^ ";
+        Map.Poly.iter m ~f;
+        end_array gen
     and write_json gen x =
       match x with
       | `Null -> null gen
@@ -337,10 +368,19 @@ module Writer = struct
          | '~' -> string gen ("~" ^ s)
          | '^' -> string gen ("~" ^ s)
          | _ -> string gen s)
+      | `Int i ->
+              if i < int_53_bit_upper && i >= int_53_bit_lower
+              then int gen i
+              else string gen ("~i" ^ Int64.to_string i)
+      | `BigInt n ->
+              string gen ("~n" ^ Big_int.string_of_big_int n)
       | `Keyword k -> string_track gen ("~:" ^ k)
       | `Symbol symb -> string_track gen ("~$" ^ symb)
       | `UUID uuid -> string gen ("~u" ^ Uuid.to_string uuid)
       | `URI s -> string gen ("~r" ^ s)
+      | `Time t ->
+          let i = (Time.to_float t) *. 1000.0 |> Float.to_int64 in
+          string gen ("~m" ^ Int64.to_string i)
       | `Float f -> float gen f
       | `Array ts ->
           begin
@@ -350,14 +390,23 @@ module Writer = struct
           end
       | `List ts -> array_tagged gen "~#list" (`Array ts)
       | `Set s -> array_tagged gen "~#set" (`Array (Set.Poly.to_list s))
+      | `Map m ->
+          if is_composite_map m
+          then composite_map gen m
+          else simple_map gen m
+      | `Extension (tag, x) ->
+        start_array gen;
+        string gen ("~#" ^ tag);
+        write_json gen x;
+        end_array gen
       | _ -> raise Todo
-    
+
     let quote gen x =
        start_array gen;
        string gen "~#'";
        write_json gen x;
        end_array gen
-    
+
     let write_json_toplevel gen = function
       | `Null -> quote gen `Null
       | `Bool b -> quote gen (`Bool b)
@@ -372,7 +421,7 @@ module Writer = struct
       let res = String.sub buf ~pos ~len in
       YAJL.gen_clear gen;
       res
-      
+
 end
 type t = T.t
 let from_string = Reader.JSON.from_string
