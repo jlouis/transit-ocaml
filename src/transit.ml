@@ -352,109 +352,117 @@ module Writer = struct
       let map = `Define_using_bind
     end
     
-    module Ctx = Monad.Make(CtxBase)
+    module Ctx = struct
+      include Monad.Make(CtxBase)
+      let runState f init = f init
+      let get_gen (c, g) = (g, c, g)
+
+    end
 
     let int_53_bit_upper = Int64.of_int 9007199254740992
     let int_53_bit_lower = Int64.of_int (-9007199254740992)
+    
+    let to_string t =
+      let open Ctx.Monad_infix in
+      let (>>) f1 f2 = f1 >>= (fun () -> f2) in
+      let string x = Ctx.get_gen >>= (fun gen -> YAJL.gen_string gen x; Ctx.return ()) in
+      let int i = Ctx.get_gen >>= (fun gen -> YAJL.gen_int64 gen i; Ctx.return ()) in
+      let null = Ctx.get_gen >>= (fun gen -> YAJL.gen_null gen ; Ctx.return ()) in
+      let bool b = Ctx.get_gen >>= (fun gen -> YAJL.gen_bool gen b; Ctx.return ()) in
+      let float f = Ctx.get_gen >>= (fun gen -> YAJL.gen_float gen f; Ctx.return ()) in
+      let start_array = Ctx.get_gen >>= (fun gen -> Ctx.return (YAJL.gen_start_array gen)) in
+      let end_array = Ctx.get_gen >>= (fun gen -> Ctx.return (YAJL.gen_end_array gen)) in
 
-    let string gen = YAJL.gen_string gen
-    let int = YAJL.gen_int64
-    let null = YAJL.gen_null
-    let bool = YAJL.gen_bool
-    let float = YAJL.gen_float
-    let start_array = YAJL.gen_start_array
-    let end_array = YAJL.gen_end_array
-
-    let is_composite_map m = false
-
-    let rec array_tagged gen tag x =
-      start_array gen;
-      string gen tag;
-      write_json gen x;
-      end_array gen
-    and composite_map gen m =
-      let f ~key ~data =
-        write_json gen key;
-        write_json gen data
+      let is_composite_map m = false in
+      let rec array_tagged tag x =
+        start_array >>
+        string tag >>
+        write_json x >>
+        end_array
+      and composite_map m =
+        let f (key, data) =
+          write_json key >> write_json data in
+        let l = Map.Poly.to_alist m
+        in
+          start_array >>
+          string "~#cmap" >>
+          Ctx.all_ignore (List.map l ~f) >>
+          end_array
+      and simple_map m =
+        let f (key, data) =
+            write_json key >> write_json data in
+        let l = Map.Poly.to_alist m
+        in
+          start_array >>
+          string "^ " >>
+          Ctx.all_ignore (List.map l ~f) >>
+          end_array
+      and write_json x =
+        match x with
+        | `Null -> null
+        | `Bool b -> bool b
+        | `String "" -> string ""
+        | `String s ->
+          (match s.[0] with
+           | '~' -> string ("~" ^ s)
+           | '^' -> string ("~" ^ s)
+           | _ -> string s)
+        | `Int i ->
+                if i < int_53_bit_upper && i >= int_53_bit_lower
+                then int i
+                else string ("~i" ^ Int64.to_string i)
+        | `BigInt n ->
+                string ("~n" ^ Big_int.string_of_big_int n)
+        | `Keyword k -> string ("~:" ^ k)
+        | `Symbol symb -> string ("~$" ^ symb)
+        | `UUID uuid -> string ("~u" ^ Uuid.to_string uuid)
+        | `URI s -> string ("~r" ^ s)
+        | `Time t ->
+            let i = (Time.to_float t) *. 1000.0 |> Float.to_int64 in
+            string ("~m" ^ Int64.to_string i)
+        | `Float f -> float f
+        | `Array ts ->
+            begin
+              start_array >>
+              Ctx.all_ignore (List.map ts ~f:(fun x -> write_json x)) >>
+              end_array
+            end
+        | `List ts -> array_tagged "~#list" (`Array ts)
+        | `Set s -> array_tagged "~#set" (`Array (Set.Poly.to_list s))
+        | `Map m ->
+            if is_composite_map m
+            then composite_map m
+            else simple_map m
+        | `Extension (tag, x) ->
+          start_array >>
+          string ("~#" ^ tag) >>
+          write_json x >>
+          end_array
+        | _ -> raise Todo in
+  
+      let quote x =
+         start_array >>
+         string "~#'" >>
+         write_json x >>
+         end_array in
+  
+      let write_json_toplevel =
+        function
+        | `Null -> quote `Null
+        | `Bool b -> quote (`Bool b)
+        | `String s -> quote (`String s)
+        | `Float f -> quote (`Float f)
+        | x -> write_json x in
+  
+      let write x =
+        let gen = YAJL.make_gen () in
+        let ((), _, _) = Ctx.runState (write_json_toplevel x) (Cache.empty, gen) in
+        let (buf, pos, len) = YAJL.gen_get_buf gen in
+        let res = String.sub buf ~pos ~len in
+        YAJL.gen_clear gen;
+        res
       in
-        start_array gen;
-        string gen "~#cmap";
-        Map.Poly.iter m ~f;
-        end_array gen
-    and simple_map gen m =
-      let f ~key ~data =
-          write_json gen key;
-          write_json gen data
-      in
-        start_array gen;
-        string gen "^ ";
-        Map.Poly.iter m ~f;
-        end_array gen
-    and write_json gen x =
-      match x with
-      | `Null -> null gen
-      | `Bool b -> bool gen b
-      | `String "" -> string gen ""
-      | `String s ->
-        (match s.[0] with
-         | '~' -> string gen ("~" ^ s)
-         | '^' -> string gen ("~" ^ s)
-         | _ -> string gen s)
-      | `Int i ->
-              if i < int_53_bit_upper && i >= int_53_bit_lower
-              then int gen i
-              else string gen ("~i" ^ Int64.to_string i)
-      | `BigInt n ->
-              string gen ("~n" ^ Big_int.string_of_big_int n)
-      | `Keyword k -> string gen ("~:" ^ k)
-      | `Symbol symb -> string gen ("~$" ^ symb)
-      | `UUID uuid -> string gen ("~u" ^ Uuid.to_string uuid)
-      | `URI s -> string gen ("~r" ^ s)
-      | `Time t ->
-          let i = (Time.to_float t) *. 1000.0 |> Float.to_int64 in
-          string gen ("~m" ^ Int64.to_string i)
-      | `Float f -> float gen f
-      | `Array ts ->
-          begin
-            start_array gen;
-            List.iter ts ~f:(fun x -> write_json gen x);
-            end_array gen;
-          end
-      | `List ts -> array_tagged gen "~#list" (`Array ts)
-      | `Set s -> array_tagged gen "~#set" (`Array (Set.Poly.to_list s))
-      | `Map m ->
-          if is_composite_map m
-          then composite_map gen m
-          else simple_map gen m
-      | `Extension (tag, x) ->
-        start_array gen;
-        string gen ("~#" ^ tag);
-        write_json gen x;
-        end_array gen
-      | _ -> raise Todo
-
-    let quote gen x =
-       start_array gen;
-       string gen "~#'";
-       write_json gen x;
-       end_array gen
-
-    let write_json_toplevel gen =
-      let cache = Cache.empty in
-      function
-      | `Null -> quote gen `Null
-      | `Bool b -> quote gen (`Bool b)
-      | `String s -> quote gen (`String s)
-      | `Float f -> quote gen (`Float f)
-      | x -> write_json gen x
-
-    let to_string x =
-      let gen = YAJL.make_gen () in
-      let () = write_json_toplevel gen x in
-      let (buf, pos, len) = YAJL.gen_get_buf gen in
-      let res = String.sub buf ~pos ~len in
-      YAJL.gen_clear gen;
-      res
+        write t
 end
 
 type t = T.t
