@@ -321,11 +321,43 @@ end
 module Writer = struct
     exception Todo
 
+    module Cache = struct
+      type t = { count : int;
+                 cache : int String.Map.t }
+      
+      let max_count = 44 * 48
+
+      let empty = { count = 0; cache = String.Map.empty }
+      let find { cache; _} = String.Map.find cache
+      let track {cache; count} key =
+        if String.length key > 3
+        then if count+1 > max_count
+             then empty
+             else { count = count + 1; cache = String.Map.add cache ~key ~data:count }
+        else {cache; count}
+    end
+
+    (* Build a state monad over the context *)
+    module CtxBase = struct
+      type 'a t = (Cache.t * YAJL.gen -> 'a * Cache.t * YAJL.gen)
+      let runState f init = f init
+
+      let return x = fun (c, g) -> (x, c, g)
+
+      let bind act1 fact2 s =
+        let (iv, ic, ig) = runState act1 s in
+        let act2 = fact2 iv in
+        runState act2 (ic, ig)
+        
+      let map = `Define_using_bind
+    end
+    
+    module Ctx = Monad.Make(CtxBase)
+
     let int_53_bit_upper = Int64.of_int 9007199254740992
     let int_53_bit_lower = Int64.of_int (-9007199254740992)
 
     let string gen = YAJL.gen_string gen
-    let string_track gen = YAJL.gen_string gen
     let int = YAJL.gen_int64
     let null = YAJL.gen_null
     let bool = YAJL.gen_bool
@@ -337,7 +369,7 @@ module Writer = struct
 
     let rec array_tagged gen tag x =
       start_array gen;
-      string_track gen tag;
+      string gen tag;
       write_json gen x;
       end_array gen
     and composite_map gen m =
@@ -374,8 +406,8 @@ module Writer = struct
               else string gen ("~i" ^ Int64.to_string i)
       | `BigInt n ->
               string gen ("~n" ^ Big_int.string_of_big_int n)
-      | `Keyword k -> string_track gen ("~:" ^ k)
-      | `Symbol symb -> string_track gen ("~$" ^ symb)
+      | `Keyword k -> string gen ("~:" ^ k)
+      | `Symbol symb -> string gen ("~$" ^ symb)
       | `UUID uuid -> string gen ("~u" ^ Uuid.to_string uuid)
       | `URI s -> string gen ("~r" ^ s)
       | `Time t ->
@@ -407,7 +439,9 @@ module Writer = struct
        write_json gen x;
        end_array gen
 
-    let write_json_toplevel gen = function
+    let write_json_toplevel gen =
+      let cache = Cache.empty in
+      function
       | `Null -> quote gen `Null
       | `Bool b -> quote gen (`Bool b)
       | `String s -> quote gen (`String s)
@@ -421,8 +455,8 @@ module Writer = struct
       let res = String.sub buf ~pos ~len in
       YAJL.gen_clear gen;
       res
-
 end
+
 type t = T.t
 let from_string = Reader.JSON.from_string
 let to_string = Writer.to_string
