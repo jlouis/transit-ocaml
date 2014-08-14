@@ -139,6 +139,7 @@ let skip_string_eq = function
   | "maps_three_char_string_keys" -> true
   | "maps_four_char_sym_keys" -> true
   | "maps_three_char_sym_keys" -> true
+  | "map_vector_keys" -> true
   | "set_simple" -> true
   | "set_nested" -> true
   | "set_mixed" -> true

@@ -382,30 +382,43 @@ module Writer = struct
           | Some i ->
             string (CacheCode.of_int i) ) in
             
-      let is_composite_map m = false in
+      let is_composite_map m =
+        let keys = Map.Poly.keys m in
+        let composite_key = function
+          | `Map _ -> true
+          | `Array _ -> true
+          | `Set _ -> true
+          | `List _ -> true
+          | _ -> false
+        in
+        List.exists keys ~f:composite_key in
       let rec array_tagged tag x =
         start_array >>
         track tag >>
         write_json x ~string_key:false >>
         end_array
-      and composite_map m =
+      and write_map m =
         let f (key, data) =
           write_json key ~string_key:true >> write_json data ~string_key:false in
         let l = Map.Poly.to_alist m
         in
-          start_array >>
-          string "~#cmap" >>
-          Ctx.all_ignore (List.map l ~f) >>
-          end_array
-      and simple_map m =
-        let f (key, data) =
-          write_json key ~string_key:true >> write_json data ~string_key:false in
-        let l = Map.Poly.to_alist m
-        in
-          start_array >>
-          string "^ " >>
-          Ctx.all_ignore (List.map l ~f) >>
-          end_array
+          if is_composite_map m
+          then
+            begin
+              start_array >>
+              string "~#cmap" >>
+              start_array >>
+              Ctx.all_ignore (List.map l ~f) >>
+              end_array >>
+              end_array
+            end
+          else
+            begin
+              start_array >>
+              string "^ " >>
+              Ctx.all_ignore (List.map l ~f) >>
+              end_array
+            end
       and write_json x ~string_key =
         let string = if string_key then track else string in
         match x with
@@ -446,10 +459,7 @@ module Writer = struct
             end
         | `List ts -> array_tagged "~#list" (`Array ts)
         | `Set s -> array_tagged "~#set" (`Array (Set.Poly.to_list s))
-        | `Map m ->
-            if is_composite_map m
-            then composite_map m
-            else simple_map m
+        | `Map m -> write_map m
         | `Extension (tag, x) ->
           start_array >>
           string ("~#" ^ tag) >>
