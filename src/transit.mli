@@ -1,5 +1,9 @@
 open Core.Std
 
+module CacheCode : sig
+  val of_int : int -> string
+end
+
 type t =
   [ | `Null
     | `String of string

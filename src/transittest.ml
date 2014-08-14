@@ -142,6 +142,9 @@ let skip_string_eq = function
   | "set_simple" -> true
   | "set_nested" -> true
   | "set_mixed" -> true
+  | "doubles_interesting" -> true (* Doubles have so many representations we can't really handle them in any special way. Rather, we just have to accept these as is. *)
+  | "ints_interesting" -> true (* Contains what I belive to be a renderer failure where very large numbers are rendered as Big_ints where they can avoid being so *)
+  | "ints_interesting_neg" -> true (* Same game as for the interesting ints *)
   | _ -> false
 
 let exemplar ty t expected =
@@ -161,6 +164,17 @@ let exemplar ty t expected =
 
 let t ty n expected = n >:: (fun(_) -> exemplar ty n expected)
 
+let cachecode_tests =
+  let tester expected i =
+    (fun (_) -> assert_equal ~printer:String.to_string expected (Transit.CacheCode.of_int i))
+  in
+  ["First"  >:: (tester "^0" 0);
+   "Second" >:: (tester "^1" 1);
+   "Ninth"  >:: (tester "^9" 9);
+   "Break"  >:: (tester "^[" 43);
+   "After Break" >:: (tester "^10" 44);
+   "Last"   >:: (tester "^[[" 1935);
+  ]
 
 let example_tests =
     ["dummy" >::
@@ -288,6 +302,7 @@ let tests =
    "Transit" >::: [
        "JSON" >::: exemplar_tests_json;
        "Example" >::: example_tests;
+       "CacheCode" >::: cachecode_tests;
        "JSON_Verbose" >::: exemplar_tests_json_verbose;
        "JSON_Write" >::: exemplar_tests_json_write;
    ]

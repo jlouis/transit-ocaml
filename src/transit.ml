@@ -49,6 +49,7 @@ module CacheCode = struct
 
   let base_char_index = 48
   let cache_code_digits = 44
+  let max_count = 44 * 44 - 1
 
   let to_int s =
     match String.length s with
@@ -62,10 +63,12 @@ module CacheCode = struct
   let of_int i =
     let hi = i / cache_code_digits in
     let lo = i % cache_code_digits in
-    if hi = 0
-    then "^" ^ String.of_char (Char.of_int_exn (lo + base_char_index))
-    else "^" ^ String.of_char (Char.of_int_exn (hi + base_char_index))
-             ^ String.of_char (Char.of_int_exn (lo + base_char_index))
+    if i > max_count
+    then raise (Invalid_cache_code "Integer is larger than 1936")
+    else if hi = 0
+         then "^" ^ String.of_char (Char.of_int_exn (lo + base_char_index))
+         else "^" ^ String.of_char (Char.of_int_exn (hi + base_char_index))
+                  ^ String.of_char (Char.of_int_exn (lo + base_char_index))
 
 end
 
@@ -108,8 +111,6 @@ module Reader = struct
       type t = { m : entry Int.Map.t;
          		 c : int }
     
-      let max_count = 44 * 44
-    
       let empty =
         { m = Int.Map.empty; c = 0 }
     
@@ -118,7 +119,7 @@ module Reader = struct
             ~key:c
             ~data:s
         in
-        if c > max_count then empty else { m = m'; c = c + 1 }
+        if c > CacheCode.max_count then empty else { m = m'; c = c + 1 }
     
       let track_transit x v = track x (ETransit v)
       let track_tag x v = track x (ETag v)
@@ -324,14 +325,12 @@ module Writer = struct
     module Cache = struct
       type t = { count : int;
                  cache : int String.Map.t }
-      
-      let max_count = 44 * 48
 
       let empty = { count = 0; cache = String.Map.empty }
       let find { cache; _} = String.Map.find cache
       let track {cache; count} key =
         if String.length key > 3
-        then if count+1 > max_count
+        then if count > CacheCode.max_count
              then empty
              else { count = count + 1; cache = String.Map.add cache ~key ~data:count }
         else {cache; count}
