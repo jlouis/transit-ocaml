@@ -128,18 +128,36 @@ type test_type = JSON | JSON_Verbose | JSON_Write
 
 let read ext t =
   let fname = String.concat ["../transit-format/examples/0.8/simple/"; t; "."; ext] in
-  let d = In_channel.read_all fname in
-  Transit.from_string d
+  In_channel.read_all fname
+
+(* The following tests depend on the order in either sets or maps. Hence we cannot do string-level equality to validate them *)
+let skip_string_eq = function
+  | "map_mixed" -> true
+  | "map_nested" -> true
+  | "map_simple" -> true
+  | "map_string_keys" -> true
+  | "maps_three_char_string_keys" -> true
+  | "maps_four_char_sym_keys" -> true
+  | "maps_three_char_sym_keys" -> true
+  | "set_simple" -> true
+  | "set_nested" -> true
+  | "set_mixed" -> true
+  | _ -> false
 
 let exemplar ty t expected =
   let test x = assert_equal ~printer:Sexp.to_string (Transit.sexp_of_t expected) (Transit.sexp_of_t x) in
   match ty with
-  | JSON -> read "json" t |> test
-  | JSON_Verbose -> read "verbose.json" t |> test
+  | JSON -> read "json" t |> Transit.from_string |> test
+  | JSON_Verbose -> read "verbose.json" t |> Transit.from_string |> test
   | JSON_Write ->
       let string_rep = Transit.to_string expected in
       let x = Transit.from_string string_rep in
-      test x
+      let base = read "json" t in
+      let cleaned = String.chop_suffix_exn base ~suffix:"\n" in (* Remove trailing \n *)
+      test x;
+      if (skip_string_eq t)
+      then ()
+      else assert_equal ~printer:Sexp.to_string (String.sexp_of_t cleaned) (String.sexp_of_t string_rep)
 
 let t ty n expected = n >:: (fun(_) -> exemplar ty n expected)
 

@@ -356,7 +356,8 @@ module Writer = struct
       include Monad.Make(CtxBase)
       let runState f init = f init
       let get_gen (c, g) = (g, c, g)
-
+      let get_cache (c, g) = (c, c, g)
+      let put_cache c' (c, g) = ((), c', g)
     end
 
     let int_53_bit_upper = Int64.of_int 9007199254740992
@@ -373,15 +374,24 @@ module Writer = struct
       let start_array = Ctx.get_gen >>= (fun gen -> Ctx.return (YAJL.gen_start_array gen)) in
       let end_array = Ctx.get_gen >>= (fun gen -> Ctx.return (YAJL.gen_end_array gen)) in
 
+      let track str =
+        Ctx.get_cache >>= (fun c ->
+          match Cache.find c str with
+          | None ->
+            let c' = Cache.track c str in
+            Ctx.put_cache c' >> string str
+          | Some i ->
+            string (CacheCode.of_int i) ) in
+            
       let is_composite_map m = false in
       let rec array_tagged tag x =
         start_array >>
-        string tag >>
+        track tag >>
         write_json x >>
         end_array
       and composite_map m =
         let f (key, data) =
-          write_json key >> write_json data in
+          write_json key ~cache:true >> write_json data ~cache:false in
         let l = Map.Poly.to_alist m
         in
           start_array >>
@@ -390,31 +400,34 @@ module Writer = struct
           end_array
       and simple_map m =
         let f (key, data) =
-            write_json key >> write_json data in
+            write_json key ~cache:true >> write_json data ~cache:false in
         let l = Map.Poly.to_alist m
         in
           start_array >>
           string "^ " >>
           Ctx.all_ignore (List.map l ~f) >>
           end_array
-      and write_json x =
+      and write_json x ?cache:(cache=false) =
         match x with
         | `Null -> null
         | `Bool b -> bool b
         | `String "" -> string ""
         | `String s ->
-          (match s.[0] with
-           | '~' -> string ("~" ^ s)
-           | '^' -> string ("~" ^ s)
-           | _ -> string s)
+          let str = match s.[0] with
+                    | '~' -> "~" ^ s
+                    | '^' -> "~" ^ s
+                    | _ -> s in
+          if cache
+          then track str
+          else string str
         | `Int i ->
                 if i < int_53_bit_upper && i >= int_53_bit_lower
                 then int i
                 else string ("~i" ^ Int64.to_string i)
         | `BigInt n ->
                 string ("~n" ^ Big_int.string_of_big_int n)
-        | `Keyword k -> string ("~:" ^ k)
-        | `Symbol symb -> string ("~$" ^ symb)
+        | `Keyword k -> track ("~:" ^ k)
+        | `Symbol symb -> track ("~$" ^ symb)
         | `UUID uuid -> string ("~u" ^ Uuid.to_string uuid)
         | `URI s -> string ("~r" ^ s)
         | `Time t ->
@@ -424,7 +437,7 @@ module Writer = struct
         | `Array ts ->
             begin
               start_array >>
-              Ctx.all_ignore (List.map ts ~f:(fun x -> write_json x)) >>
+              Ctx.all_ignore (List.map ts ~f:(fun x -> write_json x ~cache:cache)) >>
               end_array
             end
         | `List ts -> array_tagged "~#list" (`Array ts)
@@ -452,7 +465,13 @@ module Writer = struct
         | `Bool b -> quote (`Bool b)
         | `String s -> quote (`String s)
         | `Float f -> quote (`Float f)
-        | x -> write_json x in
+        | `Int i -> quote (`Int i)
+        | `Time t -> quote (`Time t)
+        | `Keyword kw -> quote (`Keyword kw)
+        | `Symbol symb -> quote (`Symbol symb)
+        | `URI u -> quote (`URI u)
+        | `UUID uuid -> quote (`UUID uuid)
+        | x -> write_json x ~cache:false in
   
       let write x =
         let gen = YAJL.make_gen () in
