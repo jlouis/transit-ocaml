@@ -180,6 +180,8 @@ let cachecode_tests =
 let example_tests =
     ["dummy" >::
      (fun (_) -> assert_equal ~printer:Sexp.to_string (String.sexp_of_t "this") (String.sexp_of_t "this"));
+     "string with newline" >::
+     (fun (_) -> assert_equal ~printer:String.to_string "[\"~#'\",\"a\\nb\"]" (Transit.to_string (`String "a\nb")));
      "large" >::
        (fun (_) ->
          let fname = "../transit-format/examples/0.8/example.json" in
