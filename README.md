@@ -83,3 +83,6 @@ the way. The flowchart diagrams help a lot in order to figure out when to make t
 * Where are string caching done? "^ "-maps only or also in "~#cmap"-maps?
 * Canonical representation of integers? There are 3 ways
 * The cache needs to contain two kinds of values: Transit values and Array tag values.
+* What is the format specification of floats when outputting them?
+* If we have a map, then a key has to be formatted as a string, even though the map is written as an array and thus easily accepts non-string keys.
+* What *precisely* constitutes the "^ "/"~#cmap" distinction?
