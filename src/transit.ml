@@ -387,11 +387,11 @@ module Writer = struct
       let rec array_tagged tag x =
         start_array >>
         track tag >>
-        write_json x >>
+        write_json x ~string_key:false >>
         end_array
       and composite_map m =
         let f (key, data) =
-          write_json key ~cache:true >> write_json data ~cache:false in
+          write_json key ~string_key:true >> write_json data ~string_key:false in
         let l = Map.Poly.to_alist m
         in
           start_array >>
@@ -400,14 +400,15 @@ module Writer = struct
           end_array
       and simple_map m =
         let f (key, data) =
-            write_json key ~cache:true >> write_json data ~cache:false in
+          write_json key ~string_key:true >> write_json data ~string_key:false in
         let l = Map.Poly.to_alist m
         in
           start_array >>
           string "^ " >>
           Ctx.all_ignore (List.map l ~f) >>
           end_array
-      and write_json x ?cache:(cache=false) =
+      and write_json x ~string_key =
+        let string = if string_key then track else string in
         match x with
         | `Null -> null
         | `Bool b -> bool b
@@ -417,15 +418,16 @@ module Writer = struct
                     | '~' -> "~" ^ s
                     | '^' -> "~" ^ s
                     | _ -> s in
-          if cache
+          if string_key
           then track str
           else string str
         | `Int i ->
-                if i < int_53_bit_upper && i >= int_53_bit_lower
-                then int i
-                else string ("~i" ^ Int64.to_string i)
-        | `BigInt n ->
-                string ("~n" ^ Big_int.string_of_big_int n)
+          if string_key
+          then track ("~i" ^ Int64.to_string i)
+          else if i < int_53_bit_upper && i >= int_53_bit_lower
+               then int i
+               else string ("~i" ^ Int64.to_string i)
+        | `BigInt n -> string ("~n" ^ Big_int.string_of_big_int n)
         | `Keyword k -> track ("~:" ^ k)
         | `Symbol symb -> track ("~$" ^ symb)
         | `UUID uuid -> string ("~u" ^ Uuid.to_string uuid)
@@ -433,11 +435,14 @@ module Writer = struct
         | `Time t ->
             let i = (Time.to_float t) *. 1000.0 |> Float.to_int64 in
             string ("~m" ^ Int64.to_string i)
-        | `Float f -> float f
+        | `Float f ->
+          if string_key
+          then track ("~d" ^ Float.to_string f)
+          else float f
         | `Array ts ->
             begin
               start_array >>
-              Ctx.all_ignore (List.map ts ~f:(fun x -> write_json x ~cache:cache)) >>
+              Ctx.all_ignore (List.map ts ~f:(fun x -> write_json x ~string_key:false)) >>
               end_array
             end
         | `List ts -> array_tagged "~#list" (`Array ts)
@@ -449,14 +454,14 @@ module Writer = struct
         | `Extension (tag, x) ->
           start_array >>
           string ("~#" ^ tag) >>
-          write_json x >>
+          write_json x ~string_key:string_key >>
           end_array
         | _ -> raise Todo in
   
       let quote x =
          start_array >>
          string "~#'" >>
-         write_json x >>
+         write_json x ~string_key:false >>
          end_array in
   
       let write_json_toplevel =
@@ -471,7 +476,7 @@ module Writer = struct
         | `Symbol symb -> quote (`Symbol symb)
         | `URI u -> quote (`URI u)
         | `UUID uuid -> quote (`UUID uuid)
-        | x -> write_json x ~cache:false in
+        | x -> write_json x ~string_key:false in
   
       let write x =
         let gen = YAJL.make_gen () in

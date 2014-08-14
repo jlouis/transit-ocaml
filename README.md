@@ -7,6 +7,13 @@ This repository implements the Transit format for OCaml.
 This is currently *experimental*. Everything is subject to change. It is not clear at this point if the approach is the right one. Details had
 to be rewritten a couple of times whenever I learned something new about how to handle this.
 
+# Completeness
+
+The current version implements most of the spec including all tests. But it omits:
+
+* Arbitrary precision decimals (Tag ~f). Simply because I have not got around to implement them yet. Do note there are no test cases requiring these yet.
+* Links — While i believe these are highly important in the long run, they are not part of the examples yet and as such are kept out of the current implementation. The goal has been to target other aspects of the spec first.
+
 ## Implementation strategy
 
 Use yajl bindings to parse data into an polymorphic variant, running hydration as we go along on the path. The encoding simple walks the tree and outputs the right tags. The decoder makes use of a current context which is essentially a typed stack of what we are currently doing. End-of-array and End-of-map callbacks then inspect the current stack contents in order to decide what to do.
@@ -86,3 +93,4 @@ the way. The flowchart diagrams help a lot in order to figure out when to make t
 * What is the format specification of floats when outputting them?
 * If we have a map, then a key has to be formatted as a string, even though the map is written as an array and thus easily accepts non-string keys.
 * What *precisely* constitutes the "^ "/"~#cmap" distinction?
+* Float representations: NaN Infinity -Infinity ?
