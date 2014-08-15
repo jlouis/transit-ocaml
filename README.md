@@ -28,6 +28,22 @@ To run the tests you need a checkout of http://github.com/cognitect/transit-form
 
 	make test
 
+Benchmarks can be run by building the benchmark in `bench` and running it with the standard Transit test. The numbers on my recent quick Haswell CPU (Intel(R) Core(TM) i7-4900MQ CPU @ 2.80GHz) are:
+
+	jlouis@eldar:~/Store/P/transit-ocaml$ ./bench/main.native -ascii -v -width 80
+	Estimated testing time 30s (3 benchmarks x 10s). Change using -quota SECS.
+	decode: Total time taken 10.092s (98 samples, max runs 98).
+	encode: Total time taken 10.2542s (64 samples, max runs 64).
+	round_trip: Total time taken 10.1332s (52 samples, max runs 52).
+	                                                                         
+	  Name         Time/Run      mWd/Run   mjWd/Run   Prom/Run   Percentage  
+	 ------------ ---------- ------------ ---------- ---------- ------------ 
+	  decode         2.12ms     352.86kw    34.86kw    34.86kw       27.88%  
+	  encode         5.07ms     647.93kw   263.69kw   250.40kw       66.70%  
+	  round_trip     7.61ms   1_000.79kw   298.54kw   285.26kw      100.00%  
+		
+The numbers are not that great, especially the amount of allocation needed. The speed for decoding is around half of that for transit-js in a new modern chrome :)
+
 #Implementation strategy
 
 Use yajl bindings to parse data into an polymorphic variant, running hydration as we go along on the path. The encoding simple walks the tree and outputs the right tags. The decoder makes use of a current context which is essentially a typed stack of what we are currently doing. End-of-array and End-of-map callbacks then inspect the current stack contents in order to decide what to do.
