@@ -14,7 +14,21 @@ The current version implements most of the spec including all tests. But it omit
 * Arbitrary precision decimals (Tag ~f). Simply because I have not got around to implement them yet. Do note there are no test cases requiring these yet.
 * Links — While i believe these are highly important in the long run, they are not part of the examples yet and as such are kept out of the current implementation. The goal has been to target other aspects of the spec first.
 
-## Implementation strategy
+# Installation
+
+First build the software:
+
+	make build
+	
+Then install the software so ocamlfind can find it and operate it:
+
+	make install
+	
+To run the tests you need a checkout of http://github.com/cognitect/transit-format in the parent directoy `..` and then you can run:
+
+	make test
+
+#Implementation strategy
 
 Use yajl bindings to parse data into an polymorphic variant, running hydration as we go along on the path. The encoding simple walks the tree and outputs the right tags. The decoder makes use of a current context which is essentially a typed stack of what we are currently doing. End-of-array and End-of-map callbacks then inspect the current stack contents in order to decide what to do.
 
@@ -30,7 +44,7 @@ values.
 
 To test rendering correctness, we verify that the JSON representation is string-equal to our rendering. This doesn't work for maps where the key order is arbitrary or for sets. Finally, what I believe is a bug in the official exemplar int renderer is ignored, and also are Double values since there are many ways to render at represent those.
 
-## Rationale for the implementation
+# Rationale for the implementation
 
 Transit has been implemented for:
 

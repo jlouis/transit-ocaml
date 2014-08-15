@@ -1,0 +1,6 @@
+name="Transit"
+version="0.8.0"
+description="Implementation of the Transit marshalling format"
+requires="core yajl num"
+archive(byte) = "transit.cma"
+archive(native) = "transit.cmxa"
