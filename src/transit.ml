@@ -436,7 +436,7 @@ module Writer = struct
         | `Int i ->
           if string_key
           then track ("~i" ^ Int64.to_string i)
-          else if i <= int_53_bit_upper && i >= int_53_bit_lower
+          else if i < int_53_bit_upper && i > int_53_bit_lower
                then int i
                else string ("~i" ^ Int64.to_string i)
         | `BigInt n -> string ("~n" ^ Big_int.string_of_big_int n)
