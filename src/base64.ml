@@ -41,9 +41,11 @@ let decode x =
     let x = (n lsr 16) land 255
     and y = (n lsr 8) land 255
     and z = n land 255 in
-    output.[3 * i + 0] <- char_of_int x;
-    if i <> words - 1 || padding < 2 then output.[3 * i + 1] <- char_of_int y;
-    if i <> words - 1 || padding < 1 then output.[3 * i + 2] <- char_of_int z;
+    Bytes.set output (3 * i + 0) (char_of_int x);
+    if i <> words - 1 || padding < 2 then
+      Bytes.set output (3 * i + 1) (char_of_int y);
+    if i <> words - 1 || padding < 1 then
+      Bytes.set output (3 * i + 2) (char_of_int z);
   done;
   output
 
@@ -55,6 +57,7 @@ let encode x =
   let padding = if length mod 3 = 0 then 0 else 3 - (length mod 3) in
   let output = String.make (words * 4) '\000' in
   let get i = if i >= length then 0 else int_of_char x.[i] in
+  let setv i pos x = Bytes.set output (4 * i + pos) (to_char x) in
   for i = 0 to words - 1 do
     let x = get (3 * i + 0)
     and y = get (3 * i + 1)
@@ -64,10 +67,10 @@ let encode x =
     and b = (n lsr 12) land 63
     and c = (n lsr 6) land 63
     and d = n land 63 in
-    output.[4 * i + 0] <- to_char a;
-    output.[4 * i + 1] <- to_char b;
-    output.[4 * i + 2] <- to_char c;
-    output.[4 * i + 3] <- to_char d;
+    setv i 0 a;
+    setv i 1 b;
+    setv i 2 c;
+    setv i 3 d;
   done;
   for i = 1 to padding do
     output.[String.length output - i] <- '=';
