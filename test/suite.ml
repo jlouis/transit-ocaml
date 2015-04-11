@@ -157,7 +157,10 @@ let exemplar ty t expected =
       let string_rep = Transit.to_string expected in
       let x = Transit.from_string string_rep in
       let base = read "json" t in
-      let cleaned = String.chop_suffix_exn base ~suffix:"\n" in (* Remove trailing \n *)
+      let cleaned = 
+        match String.chop_suffix base ~suffix:"\n" with (* Remove trailing \n *)
+        | None -> base
+        | Some cl -> cl in
       test x;
       if (skip_string_eq t)
       then ()
