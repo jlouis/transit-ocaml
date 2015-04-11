@@ -16,7 +16,6 @@
  *
  *)
 
-
 (* taken from https://github.com/avsm/ocaml-cohttp/blob/master/cohttp/base64.ml *)
 
 let code = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"

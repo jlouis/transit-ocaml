@@ -356,7 +356,7 @@ module Writer = struct
       let runState f init = f init
       let get_gen (c, g) = (g, c, g)
       let get_cache (c, g) = (c, c, g)
-      let put_cache c' (c, g) = ((), c', g)
+      let put_cache c' (_c, g) = ((), c', g)
     end
 
     let int_53_bit_upper = Int64.of_int 9007199254740992
