@@ -16,22 +16,24 @@
  *
  *)
 
+open Core.Std
+       
 (* taken from https://github.com/avsm/ocaml-cohttp/blob/master/cohttp/base64.ml *)
 
 let code = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 let padding = '='
 
-let of_char x = if x = padding then 0 else String.index code x
+let of_char x = if x = padding then 0 else String.index_exn code x
 
 let to_char x = code.[x]
 
-let decode x = 
-  let words = String.length x / 4 in
+let decode (x : Bytes.t) : Bytes.t =
+  let words = Bytes.length x / 4 in
   let padding = 
-    if String.length x = 0 then 0 else (
-      if x.[String.length x - 2] = padding
-      then 2 else (if x.[String.length x - 1] = padding then 1 else 0)) in
-  let output = String.make (words * 3 - padding) '\000' in
+    if Bytes.length x = 0 then 0 else (
+      if x.[Bytes.length x - 2] = padding
+      then 2 else (if x.[Bytes.length x - 1] = padding then 1 else 0)) in
+  let output = Bytes.create (words * 3 - padding) in
   for i = 0 to words - 1 do
     let a = of_char x.[4 * i + 0]
     and b = of_char x.[4 * i + 1]
@@ -41,11 +43,11 @@ let decode x =
     let x = (n lsr 16) land 255
     and y = (n lsr 8) land 255
     and z = n land 255 in
-    Bytes.set output (3 * i + 0) (char_of_int x);
+    String.unsafe_set output (3 * i + 0) (char_of_int x);
     if i <> words - 1 || padding < 2 then
-      Bytes.set output (3 * i + 1) (char_of_int y);
+      String.unsafe_set output (3 * i + 1) (char_of_int y);
     if i <> words - 1 || padding < 1 then
-      Bytes.set output (3 * i + 2) (char_of_int z);
+      String.unsafe_set output (3 * i + 2) (char_of_int z);
   done;
   output
 
@@ -57,7 +59,7 @@ let encode x =
   let padding = if length mod 3 = 0 then 0 else 3 - (length mod 3) in
   let output = String.make (words * 4) '\000' in
   let get i = if i >= length then 0 else int_of_char x.[i] in
-  let setv i pos x = Bytes.set output (4 * i + pos) (to_char x) in
+  let setv i pos x = String.unsafe_set output (4 * i + pos) (to_char x) in
   for i = 0 to words - 1 do
     let x = get (3 * i + 0)
     and y = get (3 * i + 1)

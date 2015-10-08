@@ -26,6 +26,5 @@ open Core.Std
     	(in that order). 
 *)
 
-val decode_string : bytes -> bytes
-val encode_string : bytes -> bytes
-
+val decode_string : Bytes.t -> Bytes.t
+val encode_string : Bytes.t -> Bytes.t
