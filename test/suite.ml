@@ -255,19 +255,19 @@ let exemplar_tests t =
           `Map (Map.Poly.of_alist_exn [`String "aa", i 5; `String "bb", i 6])]);
     t "maps_four_char_sym_keys"
       (`Array [
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 1; `Keyword "bbbb", i 2]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 3; `Keyword "bbbb", i 4]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaaa", i 5; `Keyword "bbbb", i 6])]);
+          `Map (Map.Poly.of_alist_exn [`Symbol "aaaa", i 1; `Symbol "bbbb", i 2]);
+          `Map (Map.Poly.of_alist_exn [`Symbol "aaaa", i 3; `Symbol "bbbb", i 4]);
+          `Map (Map.Poly.of_alist_exn [`Symbol "aaaa", i 5; `Symbol "bbbb", i 6])]);
     t "maps_three_char_sym_keys"
       (`Array [
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 1; `Keyword "bbb", i 2]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 3; `Keyword "bbb", i 4]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aaa", i 5; `Keyword "bbb", i 6])]);
+          `Map (Map.Poly.of_alist_exn [`Symbol "aaa", i 1; `Symbol "bbb", i 2]);
+          `Map (Map.Poly.of_alist_exn [`Symbol "aaa", i 3; `Symbol "bbb", i 4]);
+          `Map (Map.Poly.of_alist_exn [`Symbol "aaa", i 5; `Symbol "bbb", i 6])]);
     t "maps_two_char_sym_keys"
       (`Array [
-          `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 1; `Keyword "bb", i 2]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 3; `Keyword "bb", i 4]);
-          `Map (Map.Poly.of_alist_exn [`Keyword "aa", i 5; `Keyword "bb", i 6])]);
+          `Map (Map.Poly.of_alist_exn [`Symbol "aa", i 1; `Symbol "bb", i 2]);
+          `Map (Map.Poly.of_alist_exn [`Symbol "aa", i 3; `Symbol "bb", i 4]);
+          `Map (Map.Poly.of_alist_exn [`Symbol "aa", i 5; `Symbol "bb", i 6])]);
     t "nil" `Null;
     t "one_date" (`Time (from_timestamp 946728000.0)); 
     t "one" (`Int (Int64.of_int 1));
